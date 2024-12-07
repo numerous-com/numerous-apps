@@ -4,11 +4,11 @@ class ParentVisibility(anywidget.AnyWidget):
     _esm = """
     function render({ model, el }) {
       let parent_el = el.parentElement;
+      el.style.display = "none";
       
 
       function set_visibility(visible) {
-        console.log("set_visibility", visible);
-        console.log("parent_el", parent_el.classList);
+      
         if (visible) {
 
           parent_el.classList.remove("numerous-apps-hidden");
@@ -18,9 +18,9 @@ class ParentVisibility(anywidget.AnyWidget):
           parent_el.classList.remove(`numerous-apps-visible-${model.get('display')}`);
         }
       }
+      console.log("model.get('visible')", model.get("visible"));
+      set_visibility(model.get("visible"));
 
-      
-      console.log("ParentVisibility Rendered");
       model.on("change:visible", set_visibility);
     }
     export default { render };

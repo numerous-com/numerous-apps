@@ -33,9 +33,8 @@
         display: flex;
         background-color: black;
         padding: 1em;
-        height: fit-content;
+        height: 5vh;
         overflow: hidden;
-        border-radius: 4px;
     }
     .logo {
         transform: scale(0.2);
@@ -45,39 +44,60 @@
         height: 40px;
     }
 
-    
+    body {
+        min-height: 80vh;
+        height: 80vh;
+        display: block;
+        margin: 0;
+    }
+
+
+    footer {
+        margin-top: auto;
+        padding: 1em;
+        text-align: center;
+        background-color: #f8f8f8;
+    }
+
+    .main-content {
+        flex: 1;
+        flex-direction: column;
+        height: 80vh;   
+    }
     </style>
 </head>
 <body>
 
 
-<div class="header-container">
-    <div class="logo"><img src="{{ url_for('static', path='logo.svg') }}" alt="Numerous Logo"></div>
-</div>
-
-
-<div style="margin-top: 1em;">
-    {{tabs}}
-</div>
-<div class="bordered_container">
-<div>{{ tab_show_basic }}
-    <div class="column_with_spacing">
-        
-        {{ counter }}
-        {{ increment_counter }}
-        {{ selection_widget}}
-    </div>
-</div>
-<div>
-    {{ tab_show_map }}
-    <div class="column_with_spacing">
-        {{ map_widget }}
+    <div class="header-container">
+        <div class="logo"><img src="{{ url_for('static', path='logo.svg') }}" alt="Numerous Logo"></div>
     </div>
 
+
+<div class="main-content">
+    <div>
+        {{tabs}}
+    </div>
+    <div class="bordered_container">
+        <div>{{ tab_show_basic }}
+            <div class="column_with_spacing">
+                {{ counter }}
+                {{ increment_counter }}
+                {{ selection_widget}}
+            </div>
+        </div>
+        <div>
+            {{ tab_show_map }}
+            <div class="column_with_spacing">
+                {{ map_widget }}
+            </div>
+        </div>
+    </div>
 </div>
- <footer>
-        <p>&copy; 2024 Numerous ApS. All rights reserved.</p>
-    </footer>
+
+<footer>
+    <p>&copy; 2024 Numerous ApS. All rights reserved.</p>
+</footer>
     <script type="module" src="{{ url_for('static', path='js/main.js') }}"></script>
 </body>
 </html> 
