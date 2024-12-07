@@ -6,6 +6,9 @@ from ._builtins import ParentVisibility
 from multiprocessing import Queue
 from queue import Empty
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 ignored_traits = [
             "comm",
@@ -81,14 +84,14 @@ class App:
         for widget_id, widget in self.widgets.items():
             for trait in self.transformed_widgets[widget_id]['defaults'].keys():
                 trait_name = trait
-                print(f"[App] Adding observer for {widget_id}.{trait_name}")
+                logger.debug(f"[App] Adding observer for {widget_id}.{trait_name}")
                 
                 def create_handler(wid, trait):
                     def sync_handler(change):
                         # Skip broadcasting for 'clicked' events to prevent recursion
                         if trait == 'clicked':
                             return
-                        print(f"[App] Broadcasting trait change for {wid}: {change.name} = {change.new}")
+                        logger.debug(f"[App] Broadcasting trait change for {wid}: {change.name} = {change.new}")
                         send_queue.put({
                             'type': 'widget_update',
                             'widget_id': wid,

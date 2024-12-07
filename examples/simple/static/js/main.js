@@ -140,16 +140,12 @@ document.addEventListener('DOMContentLoaded', initializeWidgets);
 class WebSocketManager {
     constructor() {
         this.clientId = Math.random().toString(36).substr(2, 9);
-        this.sessionId = this.getSessionId();
+        this.sessionId = document.cookie.split('; ')
+            .find(row => row.startsWith('session_id='))
+            ?.split('=')[1];
         console.log(`[WebSocketManager] Created with clientId ${this.clientId} and sessionId ${this.sessionId}`);
         this.connect();
         this.widgetModels = new Map();
-    }
-
-    getSessionId() {
-        return document.cookie.split('; ')
-            .find(row => row.startsWith('session_id='))
-            ?.split('=')[1];
     }
 
     connect() {
