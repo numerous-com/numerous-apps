@@ -1,0 +1,17 @@
+*.egg-info/
+
+.venv
+dist
+.DS_Store
+
+# Python
+__pycache__
+.ipynb_checkpoints
+
+src/widget/static
+python/src/collections
+node_modules
+
+# Environment files
+.env
+.env.local
