@@ -105,11 +105,27 @@ async function initializeWidgets() {
     const widgetConfigs = await fetchWidgetConfigs();
     
     for (const [widgetId, config] of Object.entries(widgetConfigs)) {
-        const element = document.getElementById(widgetId);
-        if (!element) {
+        const container = document.getElementById(widgetId);
+        if (!container) {
             console.warn(`Element with id ${widgetId} not found`);
             continue;
         }
+
+        // Create and attach Shadow DOM
+        const shadowRoot = container.attachShadow({ mode: 'open' });
+        
+        // Add widget-specific CSS to shadow DOM
+        if (config.css) {
+            const styleElement = document.createElement('style');
+            styleElement.textContent = config.css;
+            shadowRoot.appendChild(styleElement);
+        }
+        
+        // Create a wrapper element inside shadow DOM with the same ID
+        const element = document.createElement('div');
+        element.id = widgetId;
+        element.classList.add('widget-wrapper');
+        shadowRoot.appendChild(element);
 
         const widgetModule = await loadWidget(config.moduleUrl);
         if (widgetModule) {
@@ -124,11 +140,16 @@ async function initializeWidgets() {
                 widgetModel.set(key, value);
             }
             widgetModel.save_changes();
-            // Render the widget with its own model
-            widgetModule.default.render({
-                model: widgetModel,
-                el: element
-            });
+            
+            try {
+                // Render the widget with its own model inside the shadow DOM
+                await widgetModule.default.render({
+                    model: widgetModel,
+                    el: element
+                });
+            } catch (error) {
+                console.error(`Failed to render widget ${widgetId}:`, error);
+            }
         }
     }
 }

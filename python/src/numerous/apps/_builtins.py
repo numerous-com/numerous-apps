@@ -3,14 +3,19 @@ import anywidget, traitlets
 class ParentVisibility(anywidget.AnyWidget):
     _esm = """
     function render({ model, el }) {
-      let parent_el = el.parentElement;
+      // Get the host element (the shadow root's host)
+      let shadow_host = el.getRootNode().host;
+      // Get the real parent element outside the shadow DOM
+      let parent_el = shadow_host.parentElement;
+      
       el.style.display = "none";
       
+      set_visibility(model.get('visible'));
 
       function set_visibility(visible) {
-      
+        if (!parent_el) return;
+        
         if (visible) {
-
           parent_el.classList.remove("numerous-apps-hidden");
           parent_el.classList.add(`numerous-apps-visible-${model.get('display')}`);
         } else {
@@ -18,31 +23,32 @@ class ParentVisibility(anywidget.AnyWidget):
           parent_el.classList.remove(`numerous-apps-visible-${model.get('display')}`);
         }
       }
-      console.log("model.get('visible')", model.get("visible"));
-      set_visibility(model.get("visible"));
 
-      model.on("change:visible", set_visibility);
+      model.on("change:visible", (value) => set_visibility(value));
+      model.on("change:display", () => {
+        set_visibility(model.get('visible'));
+      });
     }
     export default { render };
     """
     _css = """
     .numerous-apps-hidden {
-      display: none;
+      display: none !important;
     }
     .numerous-apps-visible-block {
-      display: block;
+      display: block !important;
     }
     .numerous-apps-visible-inline {
-      display: inline;
+      display: inline !important;
     }
     .numerous-apps-visible-inline-block {
-      display: inline-block;
+      display: inline-block !important;
     }
     .numerous-apps-visible-flex {
-      display: flex;
+      display: flex !important;
     }
     .numerous-apps-visible-grid {
-      display: grid;
+      display: grid !important;
     }
     """
 
@@ -51,17 +57,9 @@ class ParentVisibility(anywidget.AnyWidget):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
         self._visible = True
-
-        self.observe(self.toggle_visibility, names="visible")
         self.observe(self._update_visibility, names="visible")
     
-    def toggle_visibility(self, event):
-        print("toggle_visibility", event)
-        self.visible = not self._visible
-
     def _update_visibility(self, event):
-        print("_update_visibility", event)
-        self._visible = self.visible
+        self._visible = event.new
 
