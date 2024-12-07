@@ -123,7 +123,7 @@ async function initializeWidgets() {
             for (const [key, value] of Object.entries(config.defaults || {})) {
                 widgetModel.set(key, value);
             }
-
+            widgetModel.save_changes();
             // Render the widget with its own model
             widgetModule.default.render({
                 model: widgetModel,

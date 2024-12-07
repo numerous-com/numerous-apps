@@ -113,6 +113,15 @@ async function initializeWidgets() {
 
         const widgetModule = await loadWidget(config.moduleUrl);
         if (widgetModule) {
+            // Apply CSS if provided
+            if (config.css) {
+                const styleElement = document.createElement('style');
+                styleElement.textContent = config.css;
+                // Add a unique identifier to prevent conflicts
+                styleElement.setAttribute('data-widget-id', widgetId);
+                document.head.appendChild(styleElement);
+            }
+
             // Create a new model instance for this widget
             const widgetModel = new WidgetModel(widgetId);
             
@@ -123,6 +132,7 @@ async function initializeWidgets() {
             for (const [key, value] of Object.entries(config.defaults || {})) {
                 widgetModel.set(key, value);
             }
+            widgetModel.save_changes();
 
             // Render the widget with its own model
             widgetModule.default.render({

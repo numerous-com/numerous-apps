@@ -67,6 +67,7 @@ def transform_widgets(widgets: dict[str, anywidget.AnyWidget]):
         transformed[widget_key] = {
             "moduleUrl": module_source,  # Now this can be either a URL or a JS string
             "defaults": json_args,
+            "css": widget._css,
         }
     return transformed
 

@@ -2,10 +2,10 @@ import numerous.widgets as wi
 from numerous.apps import app, ParentVisibility
 import traitlets as tl
 
-tab_show_basic = ParentVisibility(visible=True, display="flex")
-tab_show_map = ParentVisibility(visible=False, display="block")
+tab_show_basic = ParentVisibility(visible=False, display="flex")
+tab_show_map = ParentVisibility(visible=True, display="block")
 
-tabs = wi.Tabs(["Basic", "Map"])
+tabs = wi.Tabs(["Map", "Basic"])
 
 def on_tab_change(event):
     active_tab = event['new']
