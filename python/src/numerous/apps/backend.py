@@ -7,6 +7,12 @@ import json
 import traitlets
 import asyncio
 import uvicorn
+import uuid
+from multiprocessing import Process, Queue
+import importlib
+import requests
+import argparse
+import os
 
 backend = FastAPI()
 
@@ -23,135 +29,189 @@ templates.env.autoescape = False  # Disable autoescaping globally
 backend.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 # Store active connections and their associated widget states
-connections: Dict[str, WebSocket] = {}
 widget_states = {}
 
 class Backend:
-    def __init__(self, widgets: dict, transformed_widgets: dict, template: str, dev: bool):
-        self.widgets = widgets
-        self.transformed_widgets = transformed_widgets
-        self.template = template
+    def __init__(self, module_path: str, app_name: str, is_file: bool = False, dev: bool = False):
+        self.module_path = module_path
+        self.app_name = app_name
+        self.is_file = is_file
         self.dev = dev
+        self.backend = backend
+        self.sessions = {}  # Store active sessions
+        self.connections = {}  # Add this line to store session-scoped connections
+        self._setup_routes()
 
+    def _get_session(self, session_id: str):
+        # Generate a session ID if one doesn't exist
         
 
-    def _initialize_widget_states(self):
-        # Initialize widget states with defaults
-        for widget_id, config in self.transformed_widgets.items():
-            widget_states[widget_id] = config.get('defaults', {})
-            print(f"[Backend] Initializing widget {widget_id} with defaults: {widget_states[widget_id]}")
-            
-            # Add observers to widget traitlets
-            widget = self.widgets[widget_id]
-            for trait in self.transformed_widgets[widget_id]['defaults'].keys():
-                trait_name = trait
-                print(f"[Backend] Adding observer for {widget_id}.{trait_name}")
-                # Create a synchronous wrapper for the async broadcast
-                def create_sync_handler(wid):
-                    async def async_broadcast(change):
-                        # Skip broadcasting for 'clicked' events to prevent recursion
-                        if trait == 'clicked':
-                            return
-                        await broadcast_trait_change(wid, change)
-                    def sync_handler(change):
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(async_broadcast(change))
-                    return sync_handler
-                
-                widget.observe(create_sync_handler(widget_id), names=[trait_name])
-        
-        async def broadcast_trait_change(widget_id: str, change):
-            print(f"[Backend] Broadcasting trait change for {widget_id}: {change.name} = {change.new}")
-            message = {
-                'widget_id': widget_id,
-                'property': change.name,
-                'value': change.new
+        if session_id not in self.sessions:
+
+            send_queue = Queue()
+            receive_queue = Queue()
+            process = Process(
+                target=self._app_process, 
+                args=(session_id, self.module_path, self.app_name, send_queue, receive_queue, self.is_file)
+            )
+            process.start()
+
+            self.sessions[session_id] = {
+                "process": process,
+                "send_queue": send_queue,
+                "receive_queue": receive_queue
             }
-            
-            # Broadcast to all connected clients
-            for client_id, conn in connections.items():
-                try:
-                    print(f"[Backend] Sending to client {client_id}: {message}")
-                    await conn.send_text(json.dumps(message))
-                except Exception as e:
-                    print(f"[Backend] Error broadcasting to client {client_id}: {e}")
 
+            _session = self.sessions[session_id]
 
-    def _get_template(self):
-        print(f"[Backend] Template: {self.template}")
-        if isinstance(self.template, str):
-            # Extract just the filename from the path
-            template_name = Path(self.template).name
-            # Add the template directory to Jinja2's search path
-            templates.env.loader.searchpath.append(str(Path(self.template).parent))
-            return template_name
-        return self.template
+            # Get the app definition
+            app_definition = _session["send_queue"].get()
 
-    def _generate_backend(self):
-        print(f"[Backend] Initializing with widgets: {list(self.widgets.keys())}")
-        
-        @backend.get("/")
+            # Check message type
+            if app_definition.get("type") == "init-config":
+                self.sessions[session_id]["config"] = app_definition
+            else:
+                raise ValueError("Invalid message type. Expected 'init-config'.")  
+        else:
+            _session = self.sessions[session_id]
+
+        return _session
+    
+    def _setup_routes(self):
+        @self.backend.get("/")
         async def home(request: Request):
+            
+            session_id = request.cookies.get("session_id", str(uuid.uuid4()))
+
+            _session = self._get_session(session_id)
+            app_definition = _session["config"]
+            
             def wrap_html(key):
                 return f"<div id=\"{key}\"></div>"
             
-            return templates.TemplateResponse(
-                self._get_template(),
-                {"request": request, "title": "Home Page", **{key: wrap_html(key) for key in self.transformed_widgets.keys()}}
+            template = app_definition["template"]
+
+            response = templates.TemplateResponse(
+                self._get_template(template),
+                {"request": request, "title": "Home Page", **{key: wrap_html(key) for key in app_definition["widgets"]}}
             )
+            
+            # Set the session ID cookie if it's new
+            if "session_id" not in request.cookies:
+                response.set_cookie(key="session_id", value=session_id)
+            
+            return response
 
-        @backend.get("/api/widgets")
-        async def get_widgets():
-            return self.transformed_widgets
+        @self.backend.get("/api/widgets")
+        async def get_widgets(request: Request):
+            session_id = request.cookies.get("session_id")
+            _session = self._get_session(session_id)
+            
+            app_definition = _session["config"]
+            return app_definition["widget_configs"]
 
-        @backend.websocket("/ws/{client_id}")
-        async def websocket_endpoint(websocket: WebSocket, client_id: str):
+        @self.backend.websocket("/ws/{client_id}/{session_id}")
+        async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: str):
             await websocket.accept()
             print(f"[Backend] New WebSocket connection from client {client_id}")
-            connections[client_id] = websocket
             
+            # Initialize connections dict for this session if it doesn't exist
+            if session_id not in self.connections:
+                self.connections[session_id] = {}
+            
+            # Store connection in session-specific dictionary
+            self.connections[session_id][client_id] = websocket
+            
+            session = self._get_session(session_id)
+
+            async def receive_messages():
+                try:
+                    while True:
+                        data = await websocket.receive_text()
+                        message = json.loads(data)
+                        print(f"[Backend] Received message from client {client_id}: {message}")
+                        session['receive_queue'].put(message)
+                except Exception as e:
+                    print(f"[Backend] Receive error for client {client_id}: {e}")
+                    return
+
+            async def send_messages():
+                try:
+                    while True:
+                        if not session['send_queue'].empty():
+                            response = session['send_queue'].get()
+                            print(f"[Backend] Sending message to client {client_id}: {response}")
+                            
+                            if response.get('type') == 'widget_update':
+                                print(f"[Backend] Broadcasting widget update to other clients")
+                                # Strip the 'type' field before sending to clients
+                                update_message = {
+                                    'widget_id': response['widget_id'],
+                                    'property': response['property'],
+                                    'value': response['value']
+                                }
+                                # Broadcast to other clients in the same session
+                                for other_id, conn in self.connections[session_id].items():
+                                    if True: #other_id != client_id:  # Only send to other clients
+                                        try:
+                                            print(f"[Backend] Broadcasting to client {other_id}: {update_message}")
+                                            await conn.send_text(json.dumps(update_message))
+                                        except Exception as e:
+                                            print(f"[Backend] Error broadcasting to client {other_id}: {e}")
+                            elif response.get('type') == 'init-config':
+                                # Send initialization data only to the connecting client
+                                await websocket.send_text(json.dumps(response))
+                        await asyncio.sleep(0.01)
+                except Exception as e:
+                    print(f"[Backend] Send error for client {client_id}: {e}")
+                    return
+
             try:
-                while True:
-                    data = await websocket.receive_text()
-                    message = json.loads(data)
-                    print(f"[Backend] Received message from client {client_id}: {message}")
-                    
-                    widget_id = message.get('widget_id')
-                    property_name = message.get('property')
-                    new_value = message.get('value')
-                    
-                    if widget_id and property_name is not None:
-                        print(f"[Backend] Updating widget {widget_id}.{property_name} = {new_value}")
-                        if widget_id not in widget_states:
-                            widget_states[widget_id] = {}
-                        widget_states[widget_id][property_name] = new_value
-                        
-                        # Update the actual widget
-                        widget = self.widgets[widget_id]
-                        print(f"[Backend] Setting attribute on widget: {widget}.{property_name} = {new_value}")
-                        setattr(widget, property_name, new_value)
-                        
-                        # Broadcast to other clients
-                        for other_id, conn in connections.items():
-                            if other_id != client_id:
-                                try:
-                                    print(f"[Backend] Broadcasting to client {other_id}")
-                                    await conn.send_text(json.dumps({
-                                        'widget_id': widget_id,
-                                        'property': property_name,
-                                        'value': new_value
-                                    }))
-                                except Exception as e:
-                                    print(f"[Backend] Error broadcasting to client {other_id}: {e}")
-                    
-            except Exception as e:
-                print(f"[Backend] WebSocket error for client {client_id}: {e}")
+                # Run both tasks concurrently
+                await asyncio.gather(
+                    receive_messages(),
+                    send_messages()
+                )
             finally:
-                if client_id in connections:
+                # Clean up connection from session-specific dictionary
+                if session_id in self.connections and client_id in self.connections[session_id]:
                     print(f"[Backend] Client {client_id} disconnected")
-                    del connections[client_id]
+                    del self.connections[session_id][client_id]
+                    
+                    # If this was the last connection for this session, clean up the session
+                    if not self.connections[session_id]:
+                        del self.connections[session_id]
+                        if session_id in self.sessions:
+                            self.sessions[session_id]["process"].terminate()
+                            self.sessions[session_id]["process"].join()
+                            del self.sessions[session_id]
+
+    def _get_template(self, template: str):
+            if isinstance(template, str):
+                # Extract just the filename from the path
+                template_name = Path(template).name
+                # Add the template directory to Jinja2's search path
+                templates.env.loader.searchpath.append(str(Path(template).parent))
+            return template_name
+    
+    @staticmethod
+    def _app_process(session_id: str, module_string: str, app_name: str, send_queue: Queue, receive_queue: Queue, is_file: bool = False):
+        """Run the app in a separate process"""
+        print(f"[Backend] Running app {app_name} from {module_string}")
+        if is_file:
+            # Load module from file path
+            spec = importlib.util.spec_from_file_location("app_module", module_string)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        else:
+            # Load module from import path
+            module = importlib.import_module(module_string)
+        
+        app = getattr(module, app_name)
+        app.execute(send_queue, receive_queue, session_id)
 
     def run(self):
-        self._initialize_widget_states()
-        self._generate_backend()
-        uvicorn.run(backend, host="0.0.0.0", port=8000)
+        """Start the FastAPI server"""
+        uvicorn.run(self.backend, host="127.0.0.1", port=8000)
+
+    

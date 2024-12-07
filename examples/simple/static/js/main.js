@@ -140,14 +140,21 @@ document.addEventListener('DOMContentLoaded', initializeWidgets);
 class WebSocketManager {
     constructor() {
         this.clientId = Math.random().toString(36).substr(2, 9);
-        console.log(`[WebSocketManager] Created with clientId ${this.clientId}`);
+        this.sessionId = this.getSessionId();
+        console.log(`[WebSocketManager] Created with clientId ${this.clientId} and sessionId ${this.sessionId}`);
         this.connect();
         this.widgetModels = new Map();
     }
 
+    getSessionId() {
+        return document.cookie.split('; ')
+            .find(row => row.startsWith('session_id='))
+            ?.split('=')[1];
+    }
+
     connect() {
         console.log(`[WebSocketManager ${this.clientId}] Connecting to WebSocket...`);
-        this.ws = new WebSocket(`ws://${window.location.host}/ws/${this.clientId}`);
+        this.ws = new WebSocket(`ws://${window.location.host}/ws/${this.clientId}/${this.sessionId}`);
         
         this.ws.onmessage = (event) => {
             const message = JSON.parse(event.data);

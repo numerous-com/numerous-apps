@@ -30,3 +30,6 @@ packages = ["numerous.apps"]
 
 [tool.setuptools.package-data]
 "numerous.apps" = ["py.typed"]  # If you're using type hints
+
+[project.scripts]
+numerous-server = "numerous.apps.numerous_server:main"
