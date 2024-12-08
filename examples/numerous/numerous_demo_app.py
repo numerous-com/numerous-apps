@@ -32,18 +32,29 @@ map_widget = wi.MapSelector(points={
     'Tokyo': [139.839478, 35.652832]    # Tokyo
 }, center= [2.294481, 48.858370], zoom=1)
 
+y = np.array([100, 120, 110, 130, 125, 140, 135, 150, 145, 160, 155, 170])
+months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 
+# Add temperature data
+temperatures = [5, 6, 9, 14, 18, 22, 25, 24, 20, 15, 10, 6]  # Sample temperatures in °C
 
-# Create a line chart
+# Create a bar chart
 chart = wi.Chart(
-    type="line",
+    type="bar",
     data={
-        "labels": ["January", "February", "March", "April", "May"],
-        "datasets": [{
-            "label": "My Dataset",
-            "data": [65, 59, 80, 81, 56],
-            "borderColor": "rgb(75, 192, 192)",
-            "tension": 0.1
+        "labels": months,
+        "datasets": [
+            {
+            "label": "Average Temperature",
+            "data": temperatures,
+            "type": "line",
+            "borderColor": "rgb(255, 99, 132)",
+            "yAxisID": "temperature"
+        },
+            {
+            "label": "Monthly Energy Consumption",
+            "data": y,
+            "backgroundColor": "rgb(99, 110, 250)",
         }]
     },
     options={
@@ -51,33 +62,55 @@ chart = wi.Chart(
         "plugins": {
             "title": {
                 "display": True,
-                "text": "My Chart"
+                "text": "Monthly Energy Consumption and Temperature"
+            }
+        },
+        "scales": {
+            "y": {
+                "title": {
+                    "display": True,
+                    "text": "Energy Consumption (kWh)"
+                }
+            },
+            "temperature": {
+                "type": "linear",
+                "position": "right",
+                "title": {
+                    "display": True,
+                    "text": "Temperature (°C)"
+                }
             }
         }
     }
 )
 
-
-
-
 # Generate some sample data
-x = np.linspace(0, 10, 100)
-y = np.sin(x)
 
 # Create the scatter plot data
 data = [{
-    'type': 'scatter',
-    'x': x,
+    'type': 'bar',
+    'x': months,
     'y': y,
-    'mode': 'markers',
-    'name': 'Sin Wave'
+    'name': 'Monthly Energy Consumption'
+}, {
+    'type': 'scatter',
+    'x': months,
+    'y': temperatures,
+    'name': 'Average Temperature',
+    'yaxis': 'y2',
+    'line': {'color': 'rgb(255, 99, 132)'}
 }]
 
 # Configure the layout
 layout = {
-    'title': 'Simple Scatter Plot',
-    'xaxis': {'title': 'X'},
-    'yaxis': {'title': 'sin(x)'}
+    'title': 'Monthly Energy Consumption and Temperature',
+    'xaxis': {'title': 'Month'},
+    'yaxis': {'title': 'Energy Consumption (kWh)'},
+    'yaxis2': {
+        'title': 'Temperature (°C)',
+        'overlaying': 'y',
+        'side': 'right'
+    }
 }
 
 # Optional configuration (e.g., disable the modebar)
