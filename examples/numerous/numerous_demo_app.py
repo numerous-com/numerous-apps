@@ -7,9 +7,9 @@ import traitlets as tl
 
 # APP UI
 
-tabs = wi.Tabs(["Plotly", "Basic", "Map", "ChartJS"])
+tabs = wi.Tabs(["Basic", "Map", "ChartJS", "Plotly"])
 
-tab_show_plotly, tab_show_basic, tab_show_map, tab_show_chart = tab_visibility(tabs)
+tab_show_basic, tab_show_map, tab_show_chart, tab_show_plotly = tab_visibility(tabs)
 
 counter = wi.Number(default=0, label="Counter:", fit_to_content=True)
 
@@ -63,6 +63,21 @@ chart = wi.Chart(
             "title": {
                 "display": True,
                 "text": "Monthly Energy Consumption and Temperature"
+            },
+            "zoom": {
+                "zoom": {
+                    "wheel": {
+                        "enabled": True
+                    },
+                    "pinch": {
+                        "enabled": True
+                    },
+                    "mode": 'xy'
+                },
+                "pan": {
+                    "enabled": True,
+                    "mode": 'xy'
+                }
             }
         },
         "scales": {

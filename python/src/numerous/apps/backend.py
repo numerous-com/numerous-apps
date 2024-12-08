@@ -15,6 +15,7 @@ import argparse
 import os
 import logging
 import numpy as np
+from starlette.websockets import WebSocketDisconnect
 
 class NumpyJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -71,7 +72,8 @@ class Backend:
         
 
         if session_id not in self.sessions:
-
+            logger.info(f"Creating new session {session_id}. Total sessions: {len(self.sessions) + 1}")
+            
             send_queue = Queue()
             receive_queue = Queue()
             process = Process(
@@ -154,46 +156,55 @@ class Backend:
             async def receive_messages():
                 try:
                     while True:
-                        data = await websocket.receive_text()
-                        message = json.loads(data)
-                        logger.debug(f"Received message from client {client_id}: {message}")
-                        session['receive_queue'].put(message)
-                except asyncio.CancelledError:
+                        try:
+                            data = await websocket.receive_text()
+                            message = json.loads(data)
+                            logger.debug(f"Received message from client {client_id}: {message}")
+                            session['receive_queue'].put(message)
+                        except WebSocketDisconnect:
+                            logger.debug(f"WebSocket disconnected for client {client_id}")
+                            raise  # Re-raise to trigger cleanup
+                except (asyncio.CancelledError, WebSocketDisconnect):
                     logger.debug(f"Receive task cancelled for client {client_id}")
+                    raise  # Re-raise to trigger cleanup
                 except Exception as e:
                     logger.debug(f"Receive error for client {client_id}: {e}")
-                finally:
-                    return
+                    raise  # Re-raise to trigger cleanup
 
             async def send_messages():
                 try:
                     while True:
-                        if not session['send_queue'].empty():
-                            response = session['send_queue'].get()
-                            logger.debug(f"Sending message to client {client_id}: {response}")
-                            
-                            if response.get('type') == 'widget_update':
-                                logger.debug("Broadcasting widget update to other clients")
-                                update_message = {
-                                    'widget_id': response['widget_id'],
-                                    'property': response['property'],
-                                    'value': response['value']
-                                }
-                                for other_id, conn in self.connections[session_id].items():
-                                    try:
-                                        logger.debug(f"Broadcasting to client {other_id}: {update_message}")
-                                        await conn.send_text(json.dumps(update_message))
-                                    except Exception as e:
-                                        logger.debug(f"Error broadcasting to client {other_id}: {e}")
-                            elif response.get('type') == 'init-config':
-                                await websocket.send_text(json.dumps(response))
-                        await asyncio.sleep(0.01)
-                except asyncio.CancelledError:
+                        try:
+                            if not session['send_queue'].empty():
+                                response = session['send_queue'].get()
+                                logger.debug(f"Sending message to client {client_id}: {response}")
+                                
+                                if response.get('type') == 'widget_update':
+                                    logger.debug("Broadcasting widget update to other clients")
+                                    update_message = {
+                                        'widget_id': response['widget_id'],
+                                        'property': response['property'],
+                                        'value': response['value']
+                                    }
+                                    for other_id, conn in self.connections[session_id].items():
+                                        try:
+                                            logger.debug(f"Broadcasting to client {other_id}: {update_message}")
+                                            await conn.send_text(json.dumps(update_message))
+                                        except Exception as e:
+                                            logger.debug(f"Error broadcasting to client {other_id}: {e}")
+                                            raise  # Re-raise to trigger cleanup
+                                elif response.get('type') == 'init-config':
+                                    await websocket.send_text(json.dumps(response))
+                            await asyncio.sleep(0.01)
+                        except WebSocketDisconnect:
+                            logger.debug(f"WebSocket disconnected for client {client_id}")
+                            raise  # Re-raise to trigger cleanup
+                except (asyncio.CancelledError, WebSocketDisconnect):
                     logger.debug(f"Send task cancelled for client {client_id}")
+                    raise  # Re-raise to trigger cleanup
                 except Exception as e:
                     logger.debug(f"Send error for client {client_id}: {e}")
-                finally:
-                    return
+                    raise  # Re-raise to trigger cleanup
 
             try:
                 # Run both tasks concurrently
@@ -201,19 +212,19 @@ class Backend:
                     receive_messages(),
                     send_messages()
                 )
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, WebSocketDisconnect):
                 logger.debug(f"WebSocket tasks cancelled for client {client_id}")
             finally:
                 # Clean up connection from session-specific dictionary
                 if session_id in self.connections and client_id in self.connections[session_id]:
-                    logger.debug(f"Client {client_id} disconnected")
+                    logger.info(f"Client {client_id} disconnected")
                     del self.connections[session_id][client_id]
                     
                     # If this was the last connection for this session, clean up the session
                     if not self.connections[session_id]:
                         del self.connections[session_id]
                         if session_id in self.sessions:
-                            logger.debug(f"Cleaning up session {session_id}")
+                            logger.info(f"Removing session {session_id}. Sessions remaining: {len(self.sessions) - 1}")
                             self.sessions[session_id]["process"].terminate()
                             self.sessions[session_id]["process"].join()
                             del self.sessions[session_id]

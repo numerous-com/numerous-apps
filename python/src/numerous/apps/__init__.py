@@ -51,7 +51,7 @@ def transform_widgets(widgets: dict[str, anywidget.AnyWidget]):
         json_args = {}
         for key, arg in args.items():
             try:
-                print(arg)
+
                 json_args[key] = json.dumps(arg, cls=NumpyJSONEncoder)
                 ...
             except Exception as e:
