@@ -1,3 +1,6 @@
+// Add this at the top of the file
+const USE_SHADOW_DOM = false;  // Set to true to enable Shadow DOM
+
 // Create a Model class instead of a single model object
 class WidgetModel {
     constructor(widgetId) {
@@ -111,21 +114,35 @@ async function initializeWidgets() {
             continue;
         }
 
-        // Create and attach Shadow DOM
-        const shadowRoot = container.attachShadow({ mode: 'open' });
+        let element;
+        // Add debug logging for Plotly detection
+        console.log(`[Widget ${widgetId}] Module URL:`, config.moduleUrl);
+        const isPlotlyWidget = config.moduleUrl?.toLowerCase().includes('plotly');
+        console.log(`[Widget ${widgetId}] Is Plotly widget:`, isPlotlyWidget);
         
-        // Add widget-specific CSS to shadow DOM
-        if (config.css) {
-            const styleElement = document.createElement('style');
-            styleElement.textContent = config.css;
-            shadowRoot.appendChild(styleElement);
+        if (USE_SHADOW_DOM && !isPlotlyWidget) {
+            // Use Shadow DOM for non-Plotly widgets
+            const shadowRoot = container.attachShadow({ mode: 'open' });
+            
+            if (config.css) {
+                const styleElement = document.createElement('style');
+                styleElement.textContent = config.css;
+                shadowRoot.appendChild(styleElement);
+            }
+            
+            element = document.createElement('div');
+            element.id = widgetId;
+            element.classList.add('widget-wrapper');
+            shadowRoot.appendChild(element);
+        } else {
+            // Use regular DOM for Plotly widgets or when Shadow DOM is disabled
+            element = container;
+            if (config.css) {
+                const styleElement = document.createElement('style');
+                styleElement.textContent = config.css;
+                document.head.appendChild(styleElement);
+            }
         }
-        
-        // Create a wrapper element inside shadow DOM with the same ID
-        const element = document.createElement('div');
-        element.id = widgetId;
-        element.classList.add('widget-wrapper');
-        shadowRoot.appendChild(element);
 
         const widgetModule = await loadWidget(config.moduleUrl);
         if (widgetModule) {
@@ -137,6 +154,7 @@ async function initializeWidgets() {
 
             // Initialize default values for this widget
             for (const [key, value] of Object.entries(config.defaults || {})) {
+                console.log(`[WidgetModel ${widgetId}] Setting default value for ${key}=${value}`);
                 widgetModel.set(key, value);
             }
             widgetModel.save_changes();

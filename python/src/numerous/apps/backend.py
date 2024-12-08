@@ -14,6 +14,19 @@ import requests
 import argparse
 import os
 import logging
+import numpy as np
+
+class NumpyJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        return super().default(obj)
 
 # Setup logging
 logging.basicConfig()
@@ -80,6 +93,10 @@ class Backend:
 
             # Check message type
             if app_definition.get("type") == "init-config":
+                # deserialize the config["defaults"]
+                for widget_id, config in app_definition["widget_configs"].items():
+                    if "defaults" in config:
+                        config["defaults"] = json.loads(config["defaults"])
                 self.sessions[session_id]["config"] = app_definition
             else:
                 raise ValueError("Invalid message type. Expected 'init-config'.")  

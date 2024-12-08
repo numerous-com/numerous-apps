@@ -3,10 +3,16 @@ import anywidget, traitlets
 class ParentVisibility(anywidget.AnyWidget):
     _esm = """
     function render({ model, el }) {
-      // Get the host element (the shadow root's host)
-      let shadow_host = el.getRootNode().host;
-      // Get the real parent element outside the shadow DOM
-      let parent_el = shadow_host.parentElement;
+      // Get the parent element - handle both Shadow DOM and regular DOM cases
+      let parent_el;
+      if (el.getRootNode() instanceof ShadowRoot) {
+        // Shadow DOM case
+        let shadow_host = el.getRootNode().host;
+        parent_el = shadow_host.parentElement;
+      } else {
+        // Regular DOM case
+        parent_el = el.parentElement;
+      }
       
       el.style.display = "none";
       
@@ -17,43 +23,27 @@ class ParentVisibility(anywidget.AnyWidget):
         
         if (visible) {
           parent_el.classList.remove("numerous-apps-hidden");
-          parent_el.classList.add(`numerous-apps-visible-${model.get('display')}`);
+          parent_el.classList.add("numerous-apps-visible");
         } else {
           parent_el.classList.add("numerous-apps-hidden");
-          parent_el.classList.remove(`numerous-apps-visible-${model.get('display')}`);
+          parent_el.classList.remove("numerous-apps-visible");
         }
       }
 
       model.on("change:visible", (value) => set_visibility(value));
-      model.on("change:display", () => {
-        set_visibility(model.get('visible'));
-      });
     }
     export default { render };
     """
     _css = """
+    .numerous-apps-visible {
+        display: var(--display-value) !important;
+    }
     .numerous-apps-hidden {
-      display: none !important;
-    }
-    .numerous-apps-visible-block {
-      display: block !important;
-    }
-    .numerous-apps-visible-inline {
-      display: inline !important;
-    }
-    .numerous-apps-visible-inline-block {
-      display: inline-block !important;
-    }
-    .numerous-apps-visible-flex {
-      display: flex !important;
-    }
-    .numerous-apps-visible-grid {
-      display: grid !important;
+        display: none !important;
     }
     """
 
     visible = traitlets.Bool(default_value=True).tag(sync=True)
-    display = traitlets.Enum(values=["block", "inline", "inline-block", "flex", "grid"], default_value="block").tag(sync=True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -62,4 +52,18 @@ class ParentVisibility(anywidget.AnyWidget):
     
     def _update_visibility(self, event):
         self._visible = event.new
+
+def tab_visibility(tabs_widget):
+    visibility_widgets = []
+    for tab in tabs_widget.tabs:
+        visibility_widgets.append(ParentVisibility(visible=tab == tabs_widget.active_tab))
+
+    def on_tab_change(event):
+        for i, tab in enumerate(tabs_widget.tabs):
+            visibility_widgets[i].visible = tab == event.new
+
+    tabs_widget.observe(on_tab_change, names='active_tab')
+    return visibility_widgets
+
+
 

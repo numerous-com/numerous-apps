@@ -1372,22 +1372,25 @@ select::-ms-expand {
   border-radius: 4px;
 }
 
+[data-display="block"] {
+  --display-value: block;
+}
+[data-display="flex"] {
+  --display-value: flex;
+}
+[data-display="inline"] {
+  --display-value: inline;
+}
+[data-display="inline-block"] {
+  --display-value: inline-block;
+}
+[data-display="grid"] {
+  --display-value: grid;
+}
 
 .numerous-apps-hidden {
-  display: none;
+  display: none !important;
 }
-.numerous-apps-visible-block {
-  display: block;
-}
-.numerous-apps-visible-inline {
-  display: inline;
-}
-.numerous-apps-visible-inline-block {
-  display: inline-block;
-}
-.numerous-apps-visible-flex {
-  display: flex;
-}
-.numerous-apps-visible-grid {
-  display: grid;
+.numerous-apps-visible {
+  display: var(--display-value) !important;
 }

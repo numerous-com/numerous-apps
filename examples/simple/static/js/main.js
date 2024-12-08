@@ -102,15 +102,25 @@ async function fetchWidgetConfigs() {
 
 // Updated initialize widgets function to create individual models
 async function initializeWidgets() {
+    console.log('[initializeWidgets] Starting widget initialization...');
     const widgetConfigs = await fetchWidgetConfigs();
+    console.log('[initializeWidgets] Fetched widget configs:', widgetConfigs);
+    
+    if (!Object.keys(widgetConfigs).length) {
+        console.warn('[initializeWidgets] No widget configurations found');
+        return;
+    }
+    
+    console.log(`[initializeWidgets] Found ${Object.keys(widgetConfigs).length} widgets`);
     
     for (const [widgetId, config] of Object.entries(widgetConfigs)) {
+        console.log(`[initializeWidgets] Processing widget ${widgetId}:`, config);
         const element = document.getElementById(widgetId);
         if (!element) {
-            console.warn(`Element with id ${widgetId} not found`);
+            console.warn(`[initializeWidgets] Element with id ${widgetId} not found`);
             continue;
         }
-
+        console.log(`[WidgetModel ${widgetId}] Loading widget module from ${config.moduleUrl}`);
         const widgetModule = await loadWidget(config.moduleUrl);
         if (widgetModule) {
             // Apply CSS if provided
@@ -127,9 +137,11 @@ async function initializeWidgets() {
             
             // Store the model in the WebSocket manager
             wsManager.widgetModels.set(widgetId, widgetModel);
-
+            
+            console.log(`[WidgetModel ${widgetId}] Initializing default values`);
             // Initialize default values for this widget
             for (const [key, value] of Object.entries(config.defaults || {})) {
+                console.log(`[WidgetModel ${widgetId}] Setting default value for ${key}=${value}`);
                 widgetModel.set(key, value);
             }
             widgetModel.save_changes();
@@ -142,6 +154,16 @@ async function initializeWidgets() {
         }
     }
 }
+
+// Add error handling to the event listener
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('[main.js] DOMContentLoaded event fired');
+    try {
+        initializeWidgets();
+    } catch (error) {
+        console.error('[main.js] Error initializing widgets:', error);
+    }
+});
 
 // Initialize widgets when the document is loaded
 document.addEventListener('DOMContentLoaded', initializeWidgets); 

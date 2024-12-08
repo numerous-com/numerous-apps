@@ -83,18 +83,31 @@
     <div>
         {{tabs}}
     </div>
-    <div class="bordered_container">
-        <div>{{ tab_show_basic }}
+    <div class="bordered_container" >
+        <div style="display: flex;">
+            {{ tab_show_basic }}
             <div class="column_with_spacing">
                 {{ counter }}
                 {{ increment_counter }}
                 {{ selection_widget}}
             </div>
         </div>
-        <div>
+        <div style="display: block;">
             {{ tab_show_map }}
-            <div class="column_with_spacing">
+            <div class="column_with_spacing" style="display: block; width: 100%; height: 100%;">
                 {{ map_widget }}
+            </div>
+        </div>
+        <div style="display: block;">
+            {{ tab_show_chart }}
+            <div class="column_with_spacing" style="display: block; width: 100%; height: 100%;">
+                {{ chart}}
+            </div>
+        </div>
+        <div style="display: block;">
+            {{ tab_show_plotly }}
+            <div>
+                {{ plot}}
             </div>
         </div>
     </div>

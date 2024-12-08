@@ -1,8 +1,7 @@
 import anywidget, traitlets
-from .backend import Backend
-import uvicorn
+from .backend import Backend, NumpyJSONEncoder
 from fastapi import Request
-from ._builtins import ParentVisibility
+from ._builtins import ParentVisibility, tab_visibility
 from multiprocessing import Queue
 from queue import Empty
 import json
@@ -33,6 +32,8 @@ ignored_traits = [
             "_view_name",
         ]
 
+
+
 def transform_widgets(widgets: dict[str, anywidget.AnyWidget]):
     transformed = {}
     for key, widget in widgets.items():
@@ -50,23 +51,20 @@ def transform_widgets(widgets: dict[str, anywidget.AnyWidget]):
         json_args = {}
         for key, arg in args.items():
             try:
-                _ = json.dumps(arg)
-                json_args[key] = arg
-            except:
+                print(arg)
+                json_args[key] = json.dumps(arg, cls=NumpyJSONEncoder)
                 ...
+            except Exception as e:
+                logger.error(f"Failed to serialize {key}: {str(e)}")
+                raise
 
         # Handle both URL-based and string-based widget definitions
         module_source = widget._esm
-        #if isinstance(module_source, str) and not (module_source.startswith('http') or 
-        #                                          module_source.startswith('./') or 
-        #                                          module_source.startswith('/')):
-            # If it's a string and not a URL, ensure it's a valid ES module
-           # if not 'export default' in module_source:
-           #     module_source = f"{module_source}\nexport default {{ render }};"
 
         transformed[widget_key] = {
             "moduleUrl": module_source,  # Now this can be either a URL or a JS string
-            "defaults": json_args,
+            "defaults": json.dumps(args, cls=NumpyJSONEncoder),
+            "keys": list(args.keys()),
             "css": widget._css,
         }
     return transformed
@@ -83,7 +81,7 @@ class App:
         
         # Set up observers for all widgets
         for widget_id, widget in self.widgets.items():
-            for trait in self.transformed_widgets[widget_id]['defaults'].keys():
+            for trait in self.transformed_widgets[widget_id]['keys']:
                 trait_name = trait
                 logger.debug(f"[App] Adding observer for {widget_id}.{trait_name}")
                 
