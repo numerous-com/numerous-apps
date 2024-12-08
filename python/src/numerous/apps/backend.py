@@ -16,6 +16,7 @@ import os
 import logging
 import numpy as np
 from starlette.websockets import WebSocketDisconnect
+from fastapi.responses import Response
 
 class NumpyJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -65,6 +66,8 @@ class Backend:
         logging.getLogger().setLevel(log_level)
         logger.debug(f"Log level set to {log_level}")
         
+        self.main_js = self._load_main_js()
+        
         self._setup_routes()
 
     def _get_session(self, session_id: str):
@@ -110,9 +113,7 @@ class Backend:
     def _setup_routes(self):
         @self.backend.get("/")
         async def home(request: Request):
-            # Always generate a new session ID for each tab
             session_id = str(uuid.uuid4())
-
             _session = self._get_session(session_id)
             app_definition = _session["config"]
             
@@ -121,14 +122,31 @@ class Backend:
             
             template = app_definition["template"]
 
+            # Add script initialization
+            init_script = """
+                <script src="/numerous.js"></script>
+                <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        if (typeof initializeWidgets === 'function') {
+                            initializeWidgets();
+                        } else {
+                            console.error('initializeWidgets not found. Check if numerous.js loaded correctly.');
+                        }
+                    });
+                </script>
+            """
+
             response = templates.TemplateResponse(
                 self._get_template(template),
-                {"request": request, "title": "Home Page", **{key: wrap_html(key) for key in app_definition["widgets"]}}
+                {
+                    "request": request, 
+                    "title": "Home Page",
+                    "init_script": Markup(init_script),  # Mark as safe HTML
+                    **{key: wrap_html(key) for key in app_definition["widgets"]}
+                }
             )
             
-            # Always set a new session cookie
             response.set_cookie(key="session_id", value=session_id)
-            
             return response
 
         @self.backend.get("/api/widgets")
@@ -229,6 +247,13 @@ class Backend:
                             self.sessions[session_id]["process"].join()
                             del self.sessions[session_id]
 
+        @self.backend.get("/numerous.js")
+        async def serve_main_js():
+            return Response(
+                content=self.main_js,
+                media_type="application/javascript"
+            )
+
     def _get_template(self, template: str):
             if isinstance(template, str):
                 # Extract just the filename from the path
@@ -286,5 +311,13 @@ class Backend:
             self.connections.clear()
             self.sessions.clear()
             logger.info("Server shutdown complete")
+
+    def _load_main_js(self):
+        """Load the main.js file from the package"""
+        main_js_path = Path(__file__).parent / "js" / "numerous.js"
+        if not main_js_path.exists():
+            logger.warning(f"numerous.js not found at {main_js_path}")
+            return ""
+        return main_js_path.read_text()
 
     
