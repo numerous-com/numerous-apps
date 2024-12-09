@@ -13,6 +13,7 @@ def main():
     parser.add_argument('--log-level', default='INFO', 
                       choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                       help='Set the logging level (default: INFO)')
+    parser.add_argument('--dev', action='store_true', help='Enable development mode')
     
     args = parser.parse_args()
     
@@ -21,9 +22,9 @@ def main():
     
     abs_module_path = Path(module_path).resolve()
     is_file = abs_module_path.is_file()
-
-    backend = Backend(abs_module_path, app_name, is_file, log_level=args.log_level)
-    backend.run()
     
+    backend = Backend(abs_module_path, app_name, is_file, log_level=args.log_level, dev=args.dev)
+    backend.run()
+
 if __name__ == '__main__':
     main()

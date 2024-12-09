@@ -20,6 +20,7 @@ from fastapi.responses import Response
 from starlette.responses import HTMLResponse
 from jinja2 import meta
 import jinja2
+import traceback
 
 class NumpyJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -32,6 +33,12 @@ class NumpyJSONEncoder(json.JSONEncoder):
         if isinstance(obj, np.bool_):
             return bool(obj)
         return super().default(obj)
+
+class AppProcessError(Exception):
+    pass
+
+class AppInitError(Exception):
+    pass
 
 # Setup logging
 logging.basicConfig()
@@ -68,7 +75,7 @@ class Backend:
         self.module_path = module_path
         self.app_name = app_name
         self.is_file = is_file
-        self.dev = dev
+        self.dev = True if dev else False
         self.backend = backend
         self.sessions = {}  # Store active sessions
         self.connections = {}  # Add this line to store session-scoped connections
@@ -76,7 +83,8 @@ class Backend:
         # Set log level
         log_level = getattr(logging, log_level.upper())
         logging.getLogger().setLevel(log_level)
-        logger.debug(f"Log level set to {log_level}")
+        if self.dev:
+            logger.debug(f"Dev mode enabled!")
         
         self.main_js = self._load_main_js()
         
@@ -116,7 +124,10 @@ class Backend:
                         config["defaults"] = json.loads(config["defaults"])
                 self.sessions[session_id]["config"] = app_definition
             else:
-                raise ValueError("Invalid message type. Expected 'init-config'.")  
+                if app_definition.get("type") == "error":
+                    raise AppProcessError(app_definition)
+                else:
+                    raise AppInitError("Invalid message type. Expected 'init-config'.")
         else:
             _session = self.sessions[session_id]
 
@@ -126,8 +137,22 @@ class Backend:
         @self.backend.get("/")
         async def home(request: Request):
             session_id = str(uuid.uuid4())
-            _session = self._get_session(session_id)
-            app_definition = _session["config"]
+            try:
+                _session = self._get_session(session_id)
+                app_definition = _session["config"]
+            except Exception as e:
+                if self.dev:
+                    response = HTMLResponse(content=templates.get_template("app_process_error.html.j2").render({    
+                        "error_title": f"Error in App Process",
+                        "error_message": str(e),
+                        "traceback": traceback.format_exc()
+                    }), status_code=500)
+                else:
+                    response = HTMLResponse(content=templates.get_template("error.html.j2").render({    
+                        "error_title": "Internal Error",
+                        "error_message": "An internal error occurred while initializing the session."
+                    }), status_code=500)
+                return response
             
             def wrap_html(key):
                 return f"<div id=\"{key}\"></div>"
@@ -151,8 +176,6 @@ class Backend:
             
             parsed_content = templates.env.parse(template_source)
             undefined_vars = meta.find_undeclared_variables(parsed_content)
-
-            print("Undefined vars: ", undefined_vars)
             
             # Remove request and title from undefined vars as they are always provided
             undefined_vars.discard('request')
@@ -187,23 +210,8 @@ class Backend:
                     f"Template is missing placeholders for the following widgets: {', '.join(missing_widgets)}. "
                     "These widgets will not be displayed."
                 )
-
-            # Rest of the existing code...
-            script_tags = """
-                <script src="/numerous.js"></script>
-                <script>
-                    document.addEventListener('DOMContentLoaded', function() {
-                        if (typeof initializeWidgets === 'function') {
-                            initializeWidgets();
-                        } else {
-                            console.error('initializeWidgets not found. Check if numerous.js loaded correctly.');
-                        }
-                    });
-                </script>
-            """
             
-            
-            modified_html = template_content.replace('</body>', f'{script_tags}</body>')
+            modified_html = template_content.replace('</body>', '<script src="/numerous.js"></script></body>')
             
             response = HTMLResponse(content=modified_html)
             response.set_cookie(key="session_id", value=session_id)
@@ -350,13 +358,11 @@ class Backend:
             logger.info(f"Shutting down process for session {session_id}")
         except Exception as e:
             logger.error(f"Error in process for session {session_id}: {e}")
-            # Send error to client
             send_queue.put({
                 "type": "error",
-                "error": templates.get_template("error.html.j2").render({
-                    "error_title": "Application Error",
-                    "error_message": str(e)
-                })
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "traceback": traceback.format_exc()
             })
         finally:
             # Clean up queues
