@@ -57,6 +57,9 @@ templates.env.autoescape = False  # Disable autoescaping globally
 # Optional: Configure static files (CSS, JS, images)
 backend.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+# Add new mount for package static files
+backend.mount("/numerous-static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="numerous_static")
+
 # Store active connections and their associated widget states
 widget_states = {}
 
@@ -185,6 +188,12 @@ class Backend:
                     "These widgets will not be displayed."
                 )
 
+            # Add a link to the CSS file in the HTML head using the new mount point
+            css_link = f'<link rel="stylesheet" type="text/css" href="/numerous-static/css/styles.css">'
+
+            # Insert the CSS link into the template content
+            modified_html = template_content.replace('</head>', f'{css_link}</head>')
+            
             # Rest of the existing code...
             script_tags = """
                 <script src="/numerous.js"></script>
@@ -199,7 +208,7 @@ class Backend:
                 </script>
             """
             
-            modified_html = template_content.replace('</body>', f'{script_tags}</body>')
+            modified_html = modified_html.replace('</body>', f'{script_tags}</body>')
             
             response = HTMLResponse(content=modified_html)
             response.set_cookie(key="session_id", value=session_id)
