@@ -1,3 +1,4 @@
+from typing import Any, Dict, Optional, List, TypedDict, Union
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -18,8 +19,20 @@ import jinja2
 import traceback
 import sys
 
+class WidgetConfig(TypedDict):
+    moduleUrl: str
+    defaults: Dict[str, Any]
+    keys: List[str]
+    css: Optional[str]
+
+class SessionData(TypedDict):
+    process: Process
+    send_queue: Queue
+    receive_queue: Queue
+    config: Dict[str, Any]
+
 class NumpyJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
+    def default(self, obj: Any) -> Any:
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         if isinstance(obj, np.integer):
@@ -62,17 +75,17 @@ backend.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="
 # Add new mount for package static files
 backend.mount("/numerous-static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="numerous_static")
 
-# Store active connections and their associated widget states
-widget_states = {}
+# Global state variables with type annotations
+widget_states: Dict[str, Any] = {}
 
 class Backend:
-    def __init__(self, module_path: str, app_name: str, dev: bool = False, log_level: str = 'INFO'):
+    def __init__(self, module_path: str, app_name: str, dev: bool = False, log_level: str = 'INFO') -> None:
         self.module_path = module_path
         self.app_name = app_name
         self.dev = True if dev else False
         self.backend = backend
-        self.sessions = {}  # Store active sessions
-        self.connections = {}  # Add this line to store session-scoped connections
+        self.sessions: Dict[str, SessionData] = {}
+        self.connections: Dict[str, Dict[str, WebSocket]] = {}
         
         # Set log level
         log_level = getattr(logging, log_level.upper())
@@ -81,10 +94,9 @@ class Backend:
             logger.debug("Dev mode enabled!")
         
         self.main_js = self._load_main_js()
-        
         self._setup_routes()
 
-    def _get_session(self, session_id: str):
+    def _get_session(self, session_id: str) -> SessionData:
         # Generate a session ID if one doesn't exist
         
 
@@ -125,9 +137,9 @@ class Backend:
 
         return _session
     
-    def _setup_routes(self):
+    def _setup_routes(self) -> None:
         @self.backend.get("/")
-        async def home(request: Request):
+        async def home(request: Request) -> Response:
             session_id = str(uuid.uuid4())
             try:
                 _session = self._get_session(session_id)
@@ -233,7 +245,7 @@ class Backend:
             return response
 
         @self.backend.get("/api/widgets")
-        async def get_widgets(request: Request):
+        async def get_widgets(request: Request) -> Dict[str, WidgetConfig]:
             session_id = request.cookies.get("session_id")
             _session = self._get_session(session_id)
             
@@ -241,7 +253,7 @@ class Backend:
             return app_definition["widget_configs"]
 
         @self.backend.websocket("/ws/{client_id}/{session_id}")
-        async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: str):
+        async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: str) -> None:
             await websocket.accept()
             logger.debug(f"New WebSocket connection from client {client_id}")
             
@@ -357,7 +369,14 @@ class Backend:
             })
     
     @staticmethod
-    def _app_process(session_id: str, cwd: str, module_string: str, app_name: str, send_queue: Queue, receive_queue: Queue, is_file: bool = False):
+    def _app_process(
+        session_id: str,
+        cwd: str,
+        module_string: str,
+        app_name: str,
+        send_queue: Queue,
+        receive_queue: Queue,
+    ) -> None:
         """Run the app in a separate process"""
         try:
             logger.debug(f"[Backend] Running app {app_name} from {module_string}")
@@ -401,7 +420,7 @@ class Backend:
                 except Exception:
                     pass
 
-    def run(self):
+    def run(self) -> None:
         """Start the FastAPI server"""
         try:
             uvicorn.run(self.backend, host="127.0.0.1", port=8000)
@@ -418,7 +437,7 @@ class Backend:
             self.sessions.clear()
             logger.info("Server shutdown complete")
 
-    def _load_main_js(self):
+    def _load_main_js(self) -> str:
         """Load the main.js file from the package"""
         main_js_path = Path(__file__).parent / "js" / "numerous.js"
         if not main_js_path.exists():

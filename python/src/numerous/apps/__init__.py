@@ -90,7 +90,6 @@ class App:
             key: value
             for key, value in reversed(sorted(widgets.items(), key=lambda x: isinstance(x[1], ParentVisibility)))
         }
-        print(widgets)
 
         self.widgets = widgets
         self.transformed_widgets = transform_widgets(widgets)
