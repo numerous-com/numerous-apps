@@ -24,5 +24,6 @@ def main():
 
     backend = Backend(abs_module_path, app_name, is_file, log_level=args.log_level)
     backend.run()
+    
 if __name__ == '__main__':
     main()
