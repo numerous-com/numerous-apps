@@ -17,6 +17,7 @@ import logging
 import numpy as np
 from starlette.websockets import WebSocketDisconnect
 from fastapi.responses import Response
+from starlette.responses import HTMLResponse
 
 class NumpyJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -122,8 +123,18 @@ class Backend:
             
             template = app_definition["template"]
 
-            # Add script initialization
-            init_script = """
+            # Create the template context
+            context = {
+                "request": request, 
+                "title": "Home Page",
+                **{key: wrap_html(key) for key in app_definition["widgets"]}
+            }
+
+            # Render the template directly
+            content = templates.get_template(self._get_template(template)).render(context)
+            
+            # Inject the script tags before </body>
+            script_tags = """
                 <script src="/numerous.js"></script>
                 <script>
                     document.addEventListener('DOMContentLoaded', function() {
@@ -135,18 +146,13 @@ class Backend:
                     });
                 </script>
             """
-
-            response = templates.TemplateResponse(
-                self._get_template(template),
-                {
-                    "request": request, 
-                    "title": "Home Page",
-                    "init_script": Markup(init_script),  # Mark as safe HTML
-                    **{key: wrap_html(key) for key in app_definition["widgets"]}
-                }
-            )
             
+            modified_html = content.replace('</body>', f'{script_tags}</body>')
+            
+            # Create a new response with the modified content
+            response = HTMLResponse(content=modified_html)
             response.set_cookie(key="session_id", value=session_id)
+            
             return response
 
         @self.backend.get("/api/widgets")
