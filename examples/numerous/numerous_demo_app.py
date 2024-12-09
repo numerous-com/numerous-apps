@@ -13,6 +13,8 @@ tab_show_basic, tab_show_map, tab_show_chart, tab_show_plotly = tab_visibility(t
 
 counter = wi.Number(default=0, label="Counter:", fit_to_content=True)
 
+counter2 = wi.Number(default=0, label="Counter2:", fit_to_content=True)
+
 def on_click(event):
     counter.value += 1
 
@@ -152,6 +154,7 @@ widgets = {
     "map_widget": map_widget,
     "chart": chart,
     "plot": plot,
+    "counter2": counter2,
     }
 
 app = app(widgets, template="index.html.j2", dev=True)

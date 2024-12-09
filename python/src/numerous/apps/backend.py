@@ -123,17 +123,27 @@ class Backend:
             
             template = app_definition["template"]
 
-            # Create the template context
-            context = {
-                "request": request, 
-                "title": "Home Page",
-                **{key: wrap_html(key) for key in app_definition["widgets"]}
-            }
-
-            # Render the template directly
-            content = templates.get_template(self._get_template(template)).render(context)
+            # Create the template context with widget divs
+            template_widgets = {key: wrap_html(key) for key in app_definition["widgets"]}
             
-            # Inject the script tags before </body>
+            # Check if template content contains all widget divs
+            template_content = templates.get_template(self._get_template(template)).render(
+                {"request": request, "title": "Home Page", **template_widgets}
+            )
+            
+            # Check for missing widgets
+            missing_widgets = []
+            for widget_id in app_definition["widgets"]:
+                if f'id="{widget_id}"' not in template_content:
+                    missing_widgets.append(widget_id)
+            
+            if missing_widgets:
+                logger.warning(
+                    f"Template is missing placeholders for the following widgets: {', '.join(missing_widgets)}. "
+                    "These widgets will not be displayed."
+                )
+
+            # Rest of the existing code...
             script_tags = """
                 <script src="/numerous.js"></script>
                 <script>
@@ -147,9 +157,8 @@ class Backend:
                 </script>
             """
             
-            modified_html = content.replace('</body>', f'{script_tags}</body>')
+            modified_html = template_content.replace('</body>', f'{script_tags}</body>')
             
-            # Create a new response with the modified content
             response = HTMLResponse(content=modified_html)
             response.set_cookie(key="session_id", value=session_id)
             
