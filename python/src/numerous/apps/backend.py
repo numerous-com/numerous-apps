@@ -202,13 +202,8 @@ class Backend:
                 </script>
             """
             
-            # Add a link to the CSS file in the HTML head using the new mount point
-            css_link = f'<link rel="stylesheet" type="text/css" href="/numerous-static/css/styles.css">'
-
-            # Insert the CSS link into the template content
-            modified_html = template_content.replace('</head>', f'{css_link}</head>')
             
-            modified_html = modified_html.replace('</body>', f'{script_tags}</body>')
+            modified_html = template_content.replace('</body>', f'{script_tags}</body>')
             
             response = HTMLResponse(content=modified_html)
             response.set_cookie(key="session_id", value=session_id)
