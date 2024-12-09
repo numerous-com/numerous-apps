@@ -19,6 +19,7 @@ from starlette.websockets import WebSocketDisconnect
 from fastapi.responses import Response
 from starlette.responses import HTMLResponse
 from jinja2 import meta
+import jinja2
 
 class NumpyJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -134,8 +135,17 @@ class Backend:
             # Create the template context with widget divs
             template_widgets = {key: wrap_html(key) for key in app_definition["widgets"]}
             
-            # Get template source and find undefined variables
-            template_source = templates.env.loader.get_source(templates.env, template_name)[0]
+            try:
+                # Get template source and find undefined variables
+                template_source = templates.env.loader.get_source(templates.env, template_name)[0]
+            except jinja2.exceptions.TemplateNotFound as e:
+                error_message = f"Template not found: {str(e)}"
+                response = HTMLResponse(content=templates.get_template("error.html.j2").render({    
+                    "error_title": "Template Error",
+                    "error_message": error_message
+                }), status_code=500)
+                return response
+            
             parsed_content = templates.env.parse(template_source)
             undefined_vars = meta.find_undeclared_variables(parsed_content)
 
@@ -148,9 +158,15 @@ class Backend:
             # Check for variables in template that don't correspond to widgets
             unknown_vars = undefined_vars - set(template_widgets.keys())
             if unknown_vars:
-                raise ValueError(
+                error_message = (
                     f"Template contains undefined variables that don't match any widgets: {', '.join(unknown_vars)}"
                 )
+                logger.error(error_message)
+                response = HTMLResponse(content=templates.get_template("error.html.j2").render({    
+                    "error_title": "Template Error",
+                    "error_message": error_message
+                }), status_code=500)
+                return response
 
             # Rest of the existing code...
             template_content = templates.get_template(template_name).render(
