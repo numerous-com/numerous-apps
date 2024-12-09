@@ -1,7 +1,6 @@
-import anywidget, traitlets
-from .backend import Backend, NumpyJSONEncoder
-from fastapi import Request
-from ._builtins import ParentVisibility, tab_visibility
+import anywidget
+from .backend import Backend as Backend, NumpyJSONEncoder
+from ._builtins import ParentVisibility, tab_visibility as tab_visibility
 from multiprocessing import Queue
 from queue import Empty
 import json
@@ -85,6 +84,13 @@ class App:
                 for key, value in frame.f_locals.items():
                     if isinstance(value, anywidget.AnyWidget):
                         widgets[key] = value
+
+        # Sort so ParentVisibility widgets are first in the dict
+        widgets = {
+            key: value
+            for key, value in reversed(sorted(widgets.items(), key=lambda x: isinstance(x[1], ParentVisibility)))
+        }
+        print(widgets)
 
         self.widgets = widgets
         self.transformed_widgets = transform_widgets(widgets)

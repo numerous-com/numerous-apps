@@ -2,17 +2,12 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from typing import Dict
 import json
-import traitlets
 import asyncio
 import uvicorn
 import uuid
 from multiprocessing import Process, Queue
 import importlib
-import requests
-import argparse
-import os
 import logging
 import numpy as np
 from starlette.websockets import WebSocketDisconnect
@@ -21,6 +16,7 @@ from starlette.responses import HTMLResponse
 from jinja2 import meta
 import jinja2
 import traceback
+import sys
 
 class NumpyJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -52,7 +48,6 @@ BASE_DIR = Path.cwd()
 # Add package directory setup near the top of the file
 PACKAGE_DIR = Path(__file__).parent
 
-from markupsafe import Markup
 
 # Configure templates with custom environment
 templates = Jinja2Templates(directory=[
@@ -83,7 +78,7 @@ class Backend:
         log_level = getattr(logging, log_level.upper())
         logging.getLogger().setLevel(log_level)
         if self.dev:
-            logger.debug(f"Dev mode enabled!")
+            logger.debug("Dev mode enabled!")
         
         self.main_js = self._load_main_js()
         
@@ -100,7 +95,7 @@ class Backend:
             receive_queue = Queue()
             process = Process(
                 target=self._app_process, 
-                args=(session_id, self.module_path, self.app_name, send_queue, receive_queue)
+                args=(session_id, str(BASE_DIR), self.module_path, self.app_name, send_queue, receive_queue)
             )
             process.start()
 
@@ -154,7 +149,7 @@ class Backend:
             except Exception as e:
                 if self.dev:
                     response = HTMLResponse(content=templates.get_template("app_process_error.html.j2").render({    
-                        "error_title": f"Error in App Process",
+                        "error_title": "Error in App Process",
                         "error_message": str(e),
                         "traceback": traceback.format_exc()
                     }), status_code=500)
@@ -362,10 +357,13 @@ class Backend:
             })
     
     @staticmethod
-    def _app_process(session_id: str, module_string: str, app_name: str, send_queue: Queue, receive_queue: Queue, is_file: bool = False):
+    def _app_process(session_id: str, cwd: str, module_string: str, app_name: str, send_queue: Queue, receive_queue: Queue, is_file: bool = False):
         """Run the app in a separate process"""
         try:
             logger.debug(f"[Backend] Running app {app_name} from {module_string}")
+
+            # Add cwd to a path so that imports from BASE_DIR work
+            sys.path.append(cwd)
 
             # Check if module is a file
 
@@ -395,12 +393,12 @@ class Backend:
             while not send_queue.empty():
                 try:
                     send_queue.get_nowait()
-                except:
+                except Exception:
                     pass
             while not receive_queue.empty():
                 try:
                     receive_queue.get_nowait()
-                except:
+                except Exception:
                     pass
 
     def run(self):

@@ -1,6 +1,4 @@
 import argparse
-import uvicorn
-import importlib
 from pathlib import Path
 from .backend import Backend
 

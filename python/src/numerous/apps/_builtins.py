@@ -1,4 +1,5 @@
-import anywidget, traitlets
+import anywidget
+import traitlets
 
 class ParentVisibility(anywidget.AnyWidget):
     _esm = """
