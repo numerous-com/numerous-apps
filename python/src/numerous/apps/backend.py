@@ -18,6 +18,7 @@ import numpy as np
 from starlette.websockets import WebSocketDisconnect
 from fastapi.responses import Response
 from starlette.responses import HTMLResponse
+from jinja2 import meta
 
 class NumpyJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -122,12 +123,31 @@ class Backend:
                 return f"<div id=\"{key}\"></div>"
             
             template = app_definition["template"]
+            template_name = self._get_template(template)
 
             # Create the template context with widget divs
             template_widgets = {key: wrap_html(key) for key in app_definition["widgets"]}
             
-            # Check if template content contains all widget divs
-            template_content = templates.get_template(self._get_template(template)).render(
+            # Get template source and find undefined variables
+            template_source = templates.env.loader.get_source(templates.env, template_name)[0]
+            parsed_content = templates.env.parse(template_source)
+            undefined_vars = meta.find_undeclared_variables(parsed_content)
+
+            print("Undefined vars: ", undefined_vars)
+            
+            # Remove request and title from undefined vars as they are always provided
+            undefined_vars.discard('request')
+            undefined_vars.discard('title')
+            
+            # Check for variables in template that don't correspond to widgets
+            unknown_vars = undefined_vars - set(template_widgets.keys())
+            if unknown_vars:
+                raise ValueError(
+                    f"Template contains undefined variables that don't match any widgets: {', '.join(unknown_vars)}"
+                )
+
+            # Rest of the existing code...
+            template_content = templates.get_template(template_name).render(
                 {"request": request, "title": "Home Page", **template_widgets}
             )
             
