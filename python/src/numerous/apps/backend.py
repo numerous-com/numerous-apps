@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, List, TypedDict, Union
+from typing import Any, Dict, Optional, List, TypedDict, Union, Callable
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +18,9 @@ from jinja2 import meta
 import jinja2
 import traceback
 import sys
+from jinja2 import FileSystemLoader
+
+QueueType = Queue  # type: ignore[type-arg]
 
 class WidgetConfig(TypedDict):
     moduleUrl: str
@@ -27,8 +30,8 @@ class WidgetConfig(TypedDict):
 
 class SessionData(TypedDict):
     process: Process
-    send_queue: Queue
-    receive_queue: Queue
+    send_queue: QueueType
+    receive_queue: QueueType
     config: Dict[str, Any]
 
 class NumpyJSONEncoder(json.JSONEncoder):
@@ -79,7 +82,7 @@ backend.mount("/numerous-static", StaticFiles(directory=str(PACKAGE_DIR / "stati
 widget_states: Dict[str, Any] = {}
 
 class Backend:
-    def __init__(self, module_path: str, app_name: str, dev: bool = False, log_level: str = 'INFO') -> None:
+    def __init__(self, module_path: str|Path, app_name: str, dev: bool = False, log_level: str = 'INFO') -> None:
         self.module_path = module_path
         self.app_name = app_name
         self.dev = True if dev else False
@@ -103,8 +106,8 @@ class Backend:
         if session_id not in self.sessions:
             logger.info(f"Creating new session {session_id}. Total sessions: {len(self.sessions) + 1}")
             
-            send_queue = Queue()
-            receive_queue = Queue()
+            send_queue = QueueType()
+            receive_queue = QueueType()
             process = Process(
                 target=self._app_process, 
                 args=(session_id, str(BASE_DIR), self.module_path, self.app_name, send_queue, receive_queue)
@@ -114,7 +117,8 @@ class Backend:
             self.sessions[session_id] = {
                 "process": process,
                 "send_queue": send_queue,
-                "receive_queue": receive_queue
+                "receive_queue": receive_queue,
+                "config": {}
             }
 
             _session = self.sessions[session_id]
@@ -138,6 +142,9 @@ class Backend:
         return _session
     
     def _setup_routes(self) -> None:
+        def wrap_html(key: str) -> str:
+            return f"<div id=\"{key}\"></div>"
+        
         @self.backend.get("/")
         async def home(request: Request) -> Response:
             session_id = str(uuid.uuid4())
@@ -173,9 +180,6 @@ class Backend:
                 return response
             
             
-            def wrap_html(key):
-                return f"<div id=\"{key}\"></div>"
-            
             template = app_definition["template"]
             template_name = self._get_template(template)
 
@@ -184,7 +188,9 @@ class Backend:
             
             try:
                 # Get template source and find undefined variables
-                template_source = templates.env.loader.get_source(templates.env, template_name)[0]
+                template_source = ""
+                if isinstance(templates.env.loader, FileSystemLoader):
+                    template_source = templates.env.loader.get_source(templates.env, template_name)[0]
             except jinja2.exceptions.TemplateNotFound as e:
                 error_message = f"Template not found: {str(e)}"
                 response = HTMLResponse(content=templates.get_template("error.html.j2").render({    
@@ -247,10 +253,12 @@ class Backend:
         @self.backend.get("/api/widgets")
         async def get_widgets(request: Request) -> Dict[str, WidgetConfig]:
             session_id = request.cookies.get("session_id")
+            if session_id is None:
+                return {}
             _session = self._get_session(session_id)
-            
             app_definition = _session["config"]
-            return app_definition["widget_configs"]
+            widget_configs = app_definition.get("widget_configs", {})
+            return dict(widget_configs)  # Use dict() instead of Dict[]
 
         @self.backend.websocket("/ws/{client_id}/{session_id}")
         async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: str) -> None:
@@ -266,7 +274,7 @@ class Backend:
             
             session = self._get_session(session_id)
 
-            async def receive_messages():
+            async def receive_messages() -> None:
                 try:
                     while True:
                         try:
@@ -284,7 +292,7 @@ class Backend:
                     logger.debug(f"Receive error for client {client_id}: {e}")
                     raise  # Re-raise to trigger cleanup
 
-            async def send_messages():
+            async def send_messages() -> None:
                 try:
                     while True:
                         try:
@@ -347,22 +355,21 @@ class Backend:
                             del self.sessions[session_id]
 
         @self.backend.get("/numerous.js")
-        async def serve_main_js():
+        async def serve_main_js() -> Response:
             return Response(
                 content=self.main_js,
                 media_type="application/javascript"
             )
 
-    def _get_template(self, template: str):
+    def _get_template(self, template: str) -> str:
         try:
             if isinstance(template, str):
-                # Extract just the filename from the path
                 template_name = Path(template).name
-                # Add the template directory to Jinja2's search path
-                templates.env.loader.searchpath.append(str(Path(template).parent))
-            return template_name
+                if isinstance(templates.env.loader, FileSystemLoader):
+                    templates.env.loader.searchpath.append(str(Path(template).parent))
+                return template_name
+            return ""
         except Exception as e:
-            # Render error template
             return templates.get_template("error.html.j2").render({
                 "error_title": "Template Error",
                 "error_message": f"Failed to load template: {str(e)}"
@@ -374,8 +381,8 @@ class Backend:
         cwd: str,
         module_string: str,
         app_name: str,
-        send_queue: Queue,
-        receive_queue: Queue,
+        send_queue: QueueType,
+        receive_queue: QueueType,
     ) -> None:
         """Run the app in a separate process"""
         try:
@@ -391,6 +398,8 @@ class Backend:
 
             # Load module from file path
             spec = importlib.util.spec_from_file_location("app_module", module_string)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Could not load module: {module_string}")
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             
@@ -444,5 +453,19 @@ class Backend:
             logger.warning(f"numerous.js not found at {main_js_path}")
             return ""
         return main_js_path.read_text()
+
+    def create_handler(self, wid: str, trait: str, send_queue: QueueType) -> Callable[[Any], None]:
+        def sync_handler(change: Any) -> None:
+            # Skip broadcasting for 'clicked' events to prevent recursion
+            if trait == 'clicked':
+                return
+            logger.debug(f"[App] Broadcasting trait change for {wid}: {change.name} = {change.new}")
+            send_queue.put({
+                'type': 'widget_update',
+                'widget_id': wid,
+                'property': change.name,
+                'value': change.new
+            })
+        return sync_handler
 
     

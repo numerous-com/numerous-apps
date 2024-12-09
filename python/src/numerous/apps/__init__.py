@@ -7,6 +7,8 @@ import json
 import logging
 import inspect
 import traceback
+from typing import Any
+
 logger = logging.getLogger(__name__)
 
 ignored_traits = [
@@ -79,11 +81,12 @@ class App:
         # Try to detect widgets in the locals from where the app function is called
         if len(widgets) == 0:   
             # Get the parent frame
-            frame = inspect.currentframe().f_back
-            if frame:
-                for key, value in frame.f_locals.items():
-                    if isinstance(value, anywidget.AnyWidget):
-                        widgets[key] = value
+            if not (frame := inspect.currentframe()) is None:
+                frame = frame.f_back
+                if frame:
+                    for key, value in frame.f_locals.items():
+                        if isinstance(value, anywidget.AnyWidget):
+                            widgets[key] = value
 
         # Sort so ParentVisibility widgets are first in the dict
         widgets = {
@@ -96,7 +99,7 @@ class App:
         self.template = template
         self.dev = dev
 
-    def execute(self, send_queue: Queue, receive_queue: Queue, session_id: str):
+    def execute(self, send_queue: Queue, receive_queue: Queue, session_id: str) -> None:
         """Handle widget logic in the separate process"""
         
         # Set up observers for all widgets
@@ -105,8 +108,8 @@ class App:
                 trait_name = trait
                 logger.debug(f"[App] Adding observer for {widget_id}.{trait_name}")
                 
-                def create_handler(wid, trait):
-                    def sync_handler(change):
+                def create_handler(wid: str, trait: str):
+                    def sync_handler(change: Any):
                         # Skip broadcasting for 'clicked' events to prevent recursion
                         if trait == 'clicked':
                             return
@@ -139,7 +142,7 @@ class App:
                 # No message available, continue waiting
                 continue
 
-    def _handle_widget_message(self, message: dict, send_queue: Queue):
+    def _handle_widget_message(self, message: dict, send_queue: Queue) -> None:
         """Handle incoming widget messages and update states"""
         widget_id = message.get('widget_id')
         property_name = message.get('property')

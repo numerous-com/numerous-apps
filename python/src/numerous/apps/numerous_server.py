@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 from .backend import Backend
 
-def main():
+def main() -> None:
     # Set up argument parser
     parser = argparse.ArgumentParser(description='Run a Numerous application server')
     parser.add_argument('app', help='Application import path (e.g. "myapp.main:app")')
