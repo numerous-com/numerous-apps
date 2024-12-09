@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ error_title }}</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #333;
+        }
+        .error-container {
+            background-color: #fff3f3;
+            border: 1px solid #ffcdd2;
+            border-radius: 4px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        h1 {
+            color: #d32f2f;
+            margin-top: 0;
+        }
+        .error-message {
+            white-space: pre-wrap;
+            font-family: monospace;
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <h1>{{ error_title }}</h1>
+        <div class="error-message">{{ error_message }}</div>
+    </div>
+</body>
+</html>

@@ -41,10 +41,16 @@ backend = FastAPI()
 # Get the base directory
 BASE_DIR = Path.cwd()
 
+# Add package directory setup near the top of the file
+PACKAGE_DIR = Path(__file__).parent
+
 from markupsafe import Markup
 
 # Configure templates with custom environment
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates = Jinja2Templates(directory=[
+    str(BASE_DIR / "templates"),
+    str(PACKAGE_DIR / "templates")
+])
 templates.env.autoescape = False  # Disable autoescaping globally
 
 # Optional: Configure static files (CSS, JS, images)
@@ -290,12 +296,19 @@ class Backend:
             )
 
     def _get_template(self, template: str):
+        try:
             if isinstance(template, str):
                 # Extract just the filename from the path
                 template_name = Path(template).name
                 # Add the template directory to Jinja2's search path
                 templates.env.loader.searchpath.append(str(Path(template).parent))
             return template_name
+        except Exception as e:
+            # Render error template
+            return templates.get_template("error.html.j2").render({
+                "error_title": "Template Error",
+                "error_message": f"Failed to load template: {str(e)}"
+            })
     
     @staticmethod
     def _app_process(session_id: str, module_string: str, app_name: str, send_queue: Queue, receive_queue: Queue, is_file: bool = False):
@@ -317,6 +330,14 @@ class Backend:
             logger.info(f"Shutting down process for session {session_id}")
         except Exception as e:
             logger.error(f"Error in process for session {session_id}: {e}")
+            # Send error to client
+            send_queue.put({
+                "type": "error",
+                "error": templates.get_template("error.html.j2").render({
+                    "error_title": "Application Error",
+                    "error_message": str(e)
+                })
+            })
         finally:
             # Clean up queues
             while not send_queue.empty():
