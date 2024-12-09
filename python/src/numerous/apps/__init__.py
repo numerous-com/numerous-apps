@@ -138,11 +138,5 @@ class App:
                 'value': new_value
             })
 
-    
-
-    def run(self):
-        self.backend = Backend(self.widgets, self.transformed_widgets, self.template, self.dev)
-        self.backend.run()
-
 def app(widgets: dict, template: str, dev: bool):
     return App(widgets, template, dev)

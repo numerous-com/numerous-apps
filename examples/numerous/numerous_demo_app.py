@@ -158,7 +158,3 @@ widgets = {
     }
 
 app = app(widgets, template="index.html.j2", dev=True)
-
-if __name__ == "__main__":
-    app.run()
-
