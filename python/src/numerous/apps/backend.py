@@ -71,10 +71,9 @@ backend.mount("/numerous-static", StaticFiles(directory=str(PACKAGE_DIR / "stati
 widget_states = {}
 
 class Backend:
-    def __init__(self, module_path: str, app_name: str, is_file: bool = False, dev: bool = False, log_level: str = 'INFO'):
+    def __init__(self, module_path: str, app_name: str, dev: bool = False, log_level: str = 'INFO'):
         self.module_path = module_path
         self.app_name = app_name
-        self.is_file = is_file
         self.dev = True if dev else False
         self.backend = backend
         self.sessions = {}  # Store active sessions
@@ -101,7 +100,7 @@ class Backend:
             receive_queue = Queue()
             process = Process(
                 target=self._app_process, 
-                args=(session_id, self.module_path, self.app_name, send_queue, receive_queue, self.is_file)
+                args=(session_id, self.module_path, self.app_name, send_queue, receive_queue)
             )
             process.start()
 
@@ -122,12 +121,10 @@ class Backend:
                 for widget_id, config in app_definition["widget_configs"].items():
                     if "defaults" in config:
                         config["defaults"] = json.loads(config["defaults"])
-                self.sessions[session_id]["config"] = app_definition
-            else:
-                if app_definition.get("type") == "error":
-                    raise AppProcessError(app_definition)
-                else:
-                    raise AppInitError("Invalid message type. Expected 'init-config'.")
+                
+            elif app_definition.get("type") != "error":
+                raise AppInitError("Invalid message type. Expected 'init-config'.")
+            self.sessions[session_id]["config"] = app_definition
         else:
             _session = self.sessions[session_id]
 
@@ -139,6 +136,20 @@ class Backend:
             session_id = str(uuid.uuid4())
             try:
                 _session = self._get_session(session_id)
+                if _session["config"].get("type") == "error":
+                    if self.dev:
+                        response = HTMLResponse(content=templates.get_template("app_process_error.html.j2").render({    
+                            "error_title": f"Error in App Process: {_session['config']['error_type']}",
+                            "error_message": _session['config']['message'],
+                            "traceback": _session['config']['traceback']
+                        }), status_code=500)
+                    else:
+                        response = HTMLResponse(content=templates.get_template("error.html.j2").render({    
+                            "error_title": "Internal Error",
+                            "error_message": "An internal error occurred while initializing the session."
+                        }), status_code=500)
+                    return response
+            
                 app_definition = _session["config"]
             except Exception as e:
                 if self.dev:
@@ -153,6 +164,8 @@ class Backend:
                         "error_message": "An internal error occurred while initializing the session."
                     }), status_code=500)
                 return response
+            
+            
             
             def wrap_html(key):
                 return f"<div id=\"{key}\"></div>"
@@ -282,6 +295,9 @@ class Backend:
                                             raise  # Re-raise to trigger cleanup
                                 elif response.get('type') == 'init-config':
                                     await websocket.send_text(json.dumps(response))
+                                elif response.get('type') == 'error':
+                                    print(response)
+                                    await websocket.send_text(json.dumps(response))
                             await asyncio.sleep(0.01)
                         except WebSocketDisconnect:
                             logger.debug(f"WebSocket disconnected for client {client_id}")
@@ -342,22 +358,25 @@ class Backend:
     def _app_process(session_id: str, module_string: str, app_name: str, send_queue: Queue, receive_queue: Queue, is_file: bool = False):
         """Run the app in a separate process"""
         try:
-            print(f"[Backend] Running app {app_name} from {module_string}")
-            if is_file:
-                # Load module from file path
-                spec = importlib.util.spec_from_file_location("app_module", module_string)
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-            else:
-                # Load module from import path
-                module = importlib.import_module(module_string)
+            logger.debug(f"[Backend] Running app {app_name} from {module_string}")
+
+            # Check if module is a file
+
+            if not Path(module_string).exists():
+                raise FileNotFoundError(f"Module file not found: {module_string}")
+
+            # Load module from file path
+            spec = importlib.util.spec_from_file_location("app_module", module_string)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
             
             app = getattr(module, app_name)
             app.execute(send_queue, receive_queue, session_id)
         except (KeyboardInterrupt, SystemExit):
             logger.info(f"Shutting down process for session {session_id}")
         except Exception as e:
-            logger.error(f"Error in process for session {session_id}: {e}")
+            logger.error(f"Error in process for session {session_id}: {e}, traceback: {traceback.format_exc()}")
             send_queue.put({
                 "type": "error",
                 "error_type": type(e).__name__,

@@ -21,9 +21,8 @@ def main():
     module_path, app_name = args.app.split(':')
     
     abs_module_path = Path(module_path).resolve()
-    is_file = abs_module_path.is_file()
     
-    backend = Backend(abs_module_path, app_name, is_file, log_level=args.log_level, dev=args.dev)
+    backend = Backend(abs_module_path, app_name, log_level=args.log_level, dev=args.dev)
     backend.run()
 
 if __name__ == '__main__':

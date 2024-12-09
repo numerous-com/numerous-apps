@@ -185,6 +185,67 @@ class WebSocketManager {
         console.log(`[WebSocketManager] Created with clientId ${this.clientId} and sessionId ${this.sessionId}`);
         this.connect();
         this.widgetModels = new Map();
+        this.initializeErrorModal();
+    }
+
+    initializeErrorModal() {
+        // Create modal elements if they don't exist
+        if (!document.getElementById('error-modal')) {
+            const modalHtml = `
+                <div id="error-modal" class="error-modal" style="display: none;">
+                    <div class="error-modal-content">
+                        <pre id="error-modal-message"></pre>
+                        <button onclick="document.getElementById('error-modal').style.display='none'">Dismiss</button>
+                    </div>
+                </div>
+                <style>
+                    .error-modal {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background-color: rgba(0,0,0,0.5);
+                        z-index: 1000;
+                    }
+                    .error-modal-content {
+                        position: relative;
+                        background-color: white;
+                        margin: 15% auto;
+                        padding: 20px;
+                        width: 80%;
+                        max-width: 600px;
+                        border-radius: 5px;
+                    }
+                    .error-modal-content pre {
+                        white-space: pre-wrap;
+                        word-wrap: break-word;
+                        max-height: 400px;
+                        overflow-y: auto;
+                    }
+                    .error-modal-content button {
+                        margin-top: 10px;
+                        padding: 8px 16px;
+                        background-color: #007bff;
+                        color: white;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    }
+                    .error-modal-content button:hover {
+                        background-color: #0056b3;
+                    }
+                </style>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+    }
+
+    showErrorModal(message) {
+        const modal = document.getElementById('error-modal');
+        const messageElement = document.getElementById('error-modal-message');
+        messageElement.textContent = message;
+        modal.style.display = 'block';
     }
 
     connect() {
@@ -194,6 +255,14 @@ class WebSocketManager {
         this.ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
             console.log(`[WebSocketManager ${this.clientId}] Received message:`, message);
+            
+            // Updated error handling to use modal
+            if (message.type === 'error') {
+                console.error(`[WebSocketManager ${this.clientId}] Error from backend:`, message);
+                const errorMessage = `Error: ${message.error_type}\n${message.message}\n\nTraceback:\n${message.traceback || 'No traceback available'}`;
+                this.showErrorModal(errorMessage);
+                return;
+            }
             
             const model = this.widgetModels.get(message.widget_id);
             if (model) {

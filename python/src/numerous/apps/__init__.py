@@ -7,7 +7,7 @@ from queue import Empty
 import json
 import logging
 import inspect
-
+import traceback
 logger = logging.getLogger(__name__)
 
 ignored_traits = [
@@ -143,12 +143,23 @@ class App:
         if widget_id and property_name is not None:
             # Update the widget state
             widget = self.widgets[widget_id]
-            setattr(widget, property_name, new_value)
+            try:
+                setattr(widget, property_name, new_value)
+    
+                # Send update confirmation back to main process
+                send_queue.put({
+                    'type': 'widget_update',
+                    'widget_id': widget_id,
+                    'property': property_name,
+                    'value': new_value
+                })
+            except Exception as e:
+                logger.error(f"Failed to set attribute {property_name} for widget {widget_id}: {e}")
+                send_queue.put({
+                    'type': 'error',
+                    'error_type': type(e).__name__,
+                    'message': str(e),
+                    'traceback': traceback.format_exc()
+                })
+                
 
-            # Send update confirmation back to main process
-            send_queue.put({
-                'type': 'widget_update',
-                'widget_id': widget_id,
-                'property': property_name,
-                'value': new_value
-            })
