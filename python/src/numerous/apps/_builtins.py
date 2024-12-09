@@ -41,6 +41,21 @@ class ParentVisibility(anywidget.AnyWidget):
     .numerous-apps-hidden {
         display: none !important;
     }
+    [data-display="block"] {
+        --display-value: block;
+    }
+    [data-display="flex"] {
+        --display-value: flex;
+    }
+    [data-display="inline"] {
+      --display-value: inline;
+    }
+    [data-display="inline-block"] {
+      --display-value: inline-block;
+    }
+    [data-display="grid"] {
+      --display-value: grid;
+    }
     """
 
     visible = traitlets.Bool(default_value=True).tag(sync=True)
