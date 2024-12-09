@@ -2,9 +2,6 @@ import numerous.widgets as wi
 from numerous.apps import App, tab_visibility
 import numpy as np
 from numerous.widgets.base.plotly import Plot
-import anywidget
-
-import traitlets as tl
 
 # APP UI
 
