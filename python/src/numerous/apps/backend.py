@@ -188,12 +188,6 @@ class Backend:
                     "These widgets will not be displayed."
                 )
 
-            # Add a link to the CSS file in the HTML head using the new mount point
-            css_link = f'<link rel="stylesheet" type="text/css" href="/numerous-static/css/styles.css">'
-
-            # Insert the CSS link into the template content
-            modified_html = template_content.replace('</head>', f'{css_link}</head>')
-            
             # Rest of the existing code...
             script_tags = """
                 <script src="/numerous.js"></script>
@@ -207,6 +201,12 @@ class Backend:
                     });
                 </script>
             """
+            
+            # Add a link to the CSS file in the HTML head using the new mount point
+            css_link = f'<link rel="stylesheet" type="text/css" href="/numerous-static/css/styles.css">'
+
+            # Insert the CSS link into the template content
+            modified_html = template_content.replace('</head>', f'{css_link}</head>')
             
             modified_html = modified_html.replace('</body>', f'{script_tags}</body>')
             

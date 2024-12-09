@@ -6,6 +6,7 @@ from multiprocessing import Queue
 from queue import Empty
 import json
 import logging
+import inspect
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +52,7 @@ def transform_widgets(widgets: dict[str, anywidget.AnyWidget]):
         json_args = {}
         for key, arg in args.items():
             try:
-
                 json_args[key] = json.dumps(arg, cls=NumpyJSONEncoder)
-                ...
             except Exception as e:
                 logger.error(f"Failed to serialize {key}: {str(e)}")
                 raise
@@ -70,7 +69,23 @@ def transform_widgets(widgets: dict[str, anywidget.AnyWidget]):
     return transformed
 
 class App:
-    def __init__(self, widgets: dict, template: str, dev: bool):
+    def __init__(self, template: str, dev: bool = False, widgets: dict = None, **kwargs):
+        if widgets is None:
+            widgets = {}
+
+        for key, value in kwargs.items():
+            if isinstance(value, anywidget.AnyWidget):
+                widgets[key] = value
+
+        # Try to detect widgets in the locals from where the app function is called
+        if len(widgets) == 0:   
+            # Get the parent frame
+            frame = inspect.currentframe().f_back
+            if frame:
+                for key, value in frame.f_locals.items():
+                    if isinstance(value, anywidget.AnyWidget):
+                        widgets[key] = value
+
         self.widgets = widgets
         self.transformed_widgets = transform_widgets(widgets)
         self.template = template
@@ -137,6 +152,3 @@ class App:
                 'property': property_name,
                 'value': new_value
             })
-
-def app(widgets: dict, template: str, dev: bool):
-    return App(widgets, template, dev)

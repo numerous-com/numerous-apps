@@ -1,7 +1,8 @@
 import numerous.widgets as wi
-from numerous.apps import app, tab_visibility
+from numerous.apps import App, tab_visibility
 import numpy as np
 from numerous.widgets.base.plotly import Plot
+import anywidget
 
 import traitlets as tl
 
@@ -142,19 +143,4 @@ plot = Plot(
     config=config
 )
 
-widgets = {
-    "tabs": tabs,
-    "tab_show_basic": tab_show_basic,
-    "tab_show_map": tab_show_map,
-    "tab_show_chart": tab_show_chart,
-    "tab_show_plotly": tab_show_plotly,
-    "counter": counter,
-    "increment_counter": increment_counter,
-    "selection_widget": selection_widget,
-    "map_widget": map_widget,
-    "chart": chart,
-    "plot": plot,
-    "counter2": counter2,
-    }
-
-app = app(widgets, template="index.html.j2", dev=True)
+app = App(template="index.html.j2", dev=True)
