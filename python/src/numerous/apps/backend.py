@@ -166,7 +166,6 @@ class Backend:
                 return response
             
             
-            
             def wrap_html(key):
                 return f"<div id=\"{key}\"></div>"
             
@@ -224,7 +223,14 @@ class Backend:
                     "These widgets will not be displayed."
                 )
             
-            modified_html = template_content.replace('</body>', '<script src="/numerous.js"></script></body>')
+            # Load the error modal template
+            error_modal = templates.get_template("error_modal.html.j2").render()
+            
+            # Modify the template content to include the error modal
+            modified_html = template_content.replace(
+                '</body>', 
+                f'{error_modal}<script src="/numerous.js"></script></body>'
+            )
             
             response = HTMLResponse(content=modified_html)
             response.set_cookie(key="session_id", value=session_id)
@@ -297,7 +303,8 @@ class Backend:
                                     await websocket.send_text(json.dumps(response))
                                 elif response.get('type') == 'error':
                                     print(response)
-                                    await websocket.send_text(json.dumps(response))
+                                    if self.dev:
+                                        await websocket.send_text(json.dumps(response))
                             await asyncio.sleep(0.01)
                         except WebSocketDisconnect:
                             logger.debug(f"WebSocket disconnected for client {client_id}")
