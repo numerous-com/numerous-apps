@@ -20,7 +20,7 @@ import traceback
 import sys
 from jinja2 import FileSystemLoader
 
-QueueType = Queue  # type: ignore[type-arg]
+QueueType = Queue
 
 class WidgetConfig(TypedDict):
     moduleUrl: str

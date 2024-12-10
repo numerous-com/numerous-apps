@@ -1,5 +1,5 @@
 import anywidget
-from .backend import Backend as Backend, NumpyJSONEncoder
+from .backend import Backend as Backend, NumpyJSONEncoder, WidgetConfig
 from ._builtins import ParentVisibility, tab_visibility as tab_visibility
 from multiprocessing import Queue
 from queue import Empty
@@ -7,7 +7,8 @@ import json
 import logging
 import inspect
 import traceback
-from typing import Any
+from typing import Any, Callable, Dict
+from anywidget import AnyWidget
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ ignored_traits = [
 
 
 
-def transform_widgets(widgets: dict[str, anywidget.AnyWidget]):
+def transform_widgets(widgets: Dict[str, AnyWidget]) -> Dict[str, WidgetConfig]|Dict[str, Any]:
     transformed = {}
     for key, widget in widgets.items():
         widget_key = f"{key}"
@@ -70,7 +71,7 @@ def transform_widgets(widgets: dict[str, anywidget.AnyWidget]):
     return transformed
 
 class App:
-    def __init__(self, template: str, dev: bool = False, widgets: dict = None, **kwargs):
+    def __init__(self, template: str, dev: bool = False, widgets: Dict[str, AnyWidget]|None = None, **kwargs: Dict[str, Any]) -> None:
         if widgets is None:
             widgets = {}
 
@@ -108,8 +109,8 @@ class App:
                 trait_name = trait
                 logger.debug(f"[App] Adding observer for {widget_id}.{trait_name}")
                 
-                def create_handler(wid: str, trait: str):
-                    def sync_handler(change: Any):
+                def create_handler(wid: str, trait: str) -> Callable[[Any], None]:
+                    def sync_handler(change: Any) -> None:
                         # Skip broadcasting for 'clicked' events to prevent recursion
                         if trait == 'clicked':
                             return
@@ -142,7 +143,7 @@ class App:
                 # No message available, continue waiting
                 continue
 
-    def _handle_widget_message(self, message: dict, send_queue: Queue) -> None:
+    def _handle_widget_message(self, message: Dict[str, Any], send_queue: Queue) -> None:
         """Handle incoming widget messages and update states"""
         widget_id = message.get('widget_id')
         property_name = message.get('property')

@@ -1,5 +1,8 @@
 import anywidget
 import traitlets
+from typing import Any, List, Dict
+from anywidget import AnyWidget
+
 
 class ParentVisibility(anywidget.AnyWidget):
     _esm = """
@@ -61,20 +64,20 @@ class ParentVisibility(anywidget.AnyWidget):
 
     visible = traitlets.Bool(default_value=True).tag(sync=True)
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Dict[str, Any]) -> None:
         super().__init__(**kwargs)
         self._visible = True
         self.observe(self._update_visibility, names="visible")
     
-    def _update_visibility(self, event):
+    def _update_visibility(self, event: Any) -> None:
         self._visible = event.new
 
-def tab_visibility(tabs_widget):
+def tab_visibility(tabs_widget: AnyWidget) -> List[ParentVisibility]:
     visibility_widgets = []
     for tab in tabs_widget.tabs:
         visibility_widgets.append(ParentVisibility(visible=tab == tabs_widget.active_tab))
 
-    def on_tab_change(event):
+    def on_tab_change(event: Any) -> None:
         for i, tab in enumerate(tabs_widget.tabs):
             visibility_widgets[i].visible = tab == event.new
 
