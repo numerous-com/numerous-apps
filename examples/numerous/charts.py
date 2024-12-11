@@ -1,7 +1,5 @@
 import numpy as np
 import numerous.widgets as wi
-from numerous.widgets.base.plotly import Plot
-
 
 map_widget = wi.MapSelector(points={
     'New York': [-73.985428, 40.748817],    # New York
@@ -74,45 +72,4 @@ chart = wi.Chart(
             }
         }
     }
-)
-
-# Generate some sample data
-
-# Create the scatter plot data
-data = [{
-    'type': 'bar',
-    'x': months,
-    'y': y,
-    'name': 'Monthly Energy Consumption'
-}, {
-    'type': 'scatter',
-    'x': months,
-    'y': temperatures,
-    'name': 'Average Temperature',
-    'yaxis': 'y2',
-    'line': {'color': 'rgb(255, 99, 132)'}
-}]
-
-# Configure the layout
-layout = {
-    'title': 'Monthly Energy Consumption and Temperature',
-    'xaxis': {'title': 'Month'},
-    'yaxis': {'title': 'Energy Consumption (kWh)'},
-    'yaxis2': {
-        'title': 'Temperature (°C)',
-        'overlaying': 'y',
-        'side': 'right'
-    }
-}
-
-# Optional configuration (e.g., disable the modebar)
-config = {
-    'displayModeBar': True
-}
-
-# Create and display the plot
-plot = Plot(
-    data=data,
-    layout=layout,
-    config=config
 )

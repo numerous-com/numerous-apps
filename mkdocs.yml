@@ -1,0 +1,26 @@
+site_name: numerous-widgets docs
+nav:
+  - Home: README.md
+  - Our Website: https://numerous.com
+  - Our GitHub Page: https://github.com/numerous-com/numerous-apps
+  - Our PyPI Page: https://pypi.org/project/numerous-apps/
+  - Platform Docs: https://numerous.com/docs
+  - API Reference:
+    - Apps: apps.md
+
+theme: readthedocs
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: "python"
+      handlers:
+        python:
+          setup_commands:
+            - "import sys; sys.path.insert(0, '.')"
+          paths: [.]
+          import:
+            - https://docs.python.org/3/objects.inv
+          rendering:
+            show_source: true
+            show_full_signature: true
+            show_root_heading: true

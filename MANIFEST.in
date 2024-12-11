@@ -1,0 +1,2 @@
+global-include py.typed
+include python/src/widgets/static/*

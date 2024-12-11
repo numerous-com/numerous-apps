@@ -1,0 +1,120 @@
+name: release
+env:
+  PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #TWINE_USERNAME: __token__
+  #TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+on:
+  push:
+    paths:
+      - "**"
+      - ".github/workflows/release.yml"
+
+defaults:
+  run:
+    working-directory: ./
+permissions:
+  id-token: write
+  contents: write
+jobs:
+  #lint:
+  #  name: Lint
+  #  timeout-minutes: 5
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    - uses: actions/checkout@v4
+  #    - uses: actions/setup-python@v5
+  #      with:
+  #        python-version: '3.12' 
+  #        cache: 'pip'
+  #    - run: pip install -e .[dev]
+  #    - run: python -m ruff .
+  #    - run: python -m mypy --strict .
+  test:
+    name: Unit tests
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: run tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12' 
+          cache: 'pip'
+      - run: pip install -e .[dev]
+      - run: coverage run -m pytest -vv python/tests/
+      - run: coverage report | grep 'TOTAL' | awk '{print "COVERAGE_PCT=" $4}' >> $GITHUB_ENV
+      # TODO: publish coverage report
+  build-widgets:
+    name: Build Widgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: js/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: js
+      - name: Build widgets
+        run: bash build-widgets.sh
+        working-directory: js
+      - name: Upload built widgets
+        uses: actions/upload-artifact@v4
+        with:
+          name: widgets
+          path: python/src/widgets/static/*.mjs
+  build:
+    needs: build-widgets
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    name: Build package
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - uses: actions/setup-go@v5
+        with:
+          cache: false
+      - run: python3 -m pip install python-semantic-release==9.6.0 build>=1.2.1
+      - run: semantic-release version --no-commit --no-tag --no-push --no-changelog  # update version locally to build new version
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: ./dist/*
+  release:
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    name: Release
+    environment: release
+    needs: 
+      #- lint
+      - test
+      - build-widgets
+      - build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - uses: actions/download-artifact@v4
+        id: download
+        with:
+          name: package
+          path: ./dist
+      - run: pip install python-semantic-release==9.6.0
+      - run: semantic-release version --commit --tag --push
+      - run: semantic-release publish  
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

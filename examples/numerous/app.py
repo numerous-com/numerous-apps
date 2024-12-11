@@ -1,12 +1,12 @@
 import numerous.widgets as wi
 from numerous.apps import App, tab_visibility
-from charts import map_widget, chart, plot
+from charts import map_widget, chart
 
 # APP UI
 
-tabs = wi.Tabs(["Basic", "Map", "ChartJS", "Plotly"])
+tabs = wi.Tabs(["Basic", "Map", "ChartJS"])
 
-tab_show_basic, tab_show_map, tab_show_chart, tab_show_plotly = tab_visibility(tabs)
+tab_show_basic, tab_show_map, tab_show_chart = tab_visibility(tabs)
 
 counter = wi.Number(default=0, label="Counter:", fit_to_content=True)
 
