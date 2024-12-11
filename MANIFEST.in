@@ -1,2 +1,5 @@
 global-include py.typed
-include python/src/widgets/static/*
+
+include src/numerous/apps/js/*
+include src/numerous/apps/static/*
+include src/numerous/apps/templates/*
