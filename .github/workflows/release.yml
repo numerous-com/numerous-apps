@@ -42,32 +42,11 @@ jobs:
           python-version: '3.12' 
           cache: 'pip'
       - run: pip install -e .[dev]
-      - run: coverage run -m pytest -vv python/tests/
+      - run: coverage run -m pytest -vv tests/
       - run: coverage report | grep 'TOTAL' | awk '{print "COVERAGE_PCT=" $4}' >> $GITHUB_ENV
       # TODO: publish coverage report
-  build-widgets:
-    name: Build Widgets
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: js/package-lock.json
-      - name: Install dependencies
-        run: npm ci
-        working-directory: js
-      - name: Build widgets
-        run: bash build-widgets.sh
-        working-directory: js
-      - name: Upload built widgets
-        uses: actions/upload-artifact@v4
-        with:
-          name: widgets
-          path: python/src/widgets/static/*.mjs
   build:
-    needs: build-widgets
+    needs: test
     timeout-minutes: 15
     runs-on: ubuntu-latest
     name: Build package
@@ -98,7 +77,6 @@ jobs:
     needs: 
       #- lint
       - test
-      - build-widgets
       - build
     steps:
       - uses: actions/checkout@v4
