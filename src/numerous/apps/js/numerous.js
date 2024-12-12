@@ -1,5 +1,32 @@
-// Add this at the top of the file
 const USE_SHADOW_DOM = false;  // Set to true to enable Shadow DOM
+const LOG_LEVELS = {
+    DEBUG: 0,
+    INFO: 1,
+    WARN: 2,
+    ERROR: 3,
+    NONE: 4
+};
+let currentLogLevel = LOG_LEVELS.INFO; // Default log level
+
+// Add this logging utility function
+function log(level, ...args) {
+    if (level >= currentLogLevel) {
+        switch (level) {
+            case LOG_LEVELS.DEBUG:
+                console.log(...args);
+                break;
+            case LOG_LEVELS.INFO:
+                console.info(...args);
+                break;
+            case LOG_LEVELS.WARN:
+                console.warn(...args);
+                break;
+            case LOG_LEVELS.ERROR:
+                console.error(...args);
+                break;
+        }
+    }
+}
 
 // Create a Model class instead of a single model object
 class WidgetModel {
@@ -8,18 +35,18 @@ class WidgetModel {
         this.data = {};
         this._callbacks = {};
         this._suppressSync = false;
-        console.log(`[WidgetModel] Created for widget ${widgetId}`);
+        log(LOG_LEVELS.DEBUG, `[WidgetModel] Created for widget ${widgetId}`);
     }
     
     set(key, value) {
-        console.log(`[WidgetModel] Setting ${key}=${value} for widget ${this.widgetId}`);
+        log(LOG_LEVELS.DEBUG, `[WidgetModel] Setting ${key}=${value} for widget ${this.widgetId}`);
         this.data[key] = value;
-        console.log(`[WidgetModel] Triggering change:${key} event`);
+        log(LOG_LEVELS.DEBUG, `[WidgetModel] Triggering change:${key} event`);
         this.trigger('change:' + key, value);
         
         // Sync with server if not suppressed
         if (!this._suppressSync) {
-            console.log(`[WidgetModel] Sending update to server`);
+            log(LOG_LEVELS.DEBUG, `[WidgetModel] Sending update to server`);
             wsManager.sendUpdate(this.widgetId, key, value);
         }
     }
@@ -29,7 +56,7 @@ class WidgetModel {
     }
     
     save_changes() {
-        console.log('Saving changes:', this.data);
+        log('Saving changes:', this.data);
     }
 
     on(eventName, callback) {
@@ -54,17 +81,17 @@ class WidgetModel {
     }
 
     trigger(eventName, data) {
-        console.log(`[WidgetModel ${this.widgetId}] Triggering ${eventName} with data:`, data);
+        log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Triggering ${eventName} with data:`, data);
         if (this._callbacks[eventName]) {
-            console.log(`[WidgetModel ${this.widgetId}] Found ${this._callbacks[eventName].length} callbacks for ${eventName}`);
+            log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Found ${this._callbacks[eventName].length} callbacks for ${eventName}`);
             this._callbacks[eventName].forEach(callback => callback(data));
         } else {
-            console.log(`[WidgetModel ${this.widgetId}] No callbacks found for ${eventName}`);
+            log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] No callbacks found for ${eventName}`);
         }
     }
 
     send(content, callbacks, buffers) {
-        console.log(`[WidgetModel ${this.widgetId}] Sending message:`, content);
+        log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Sending message:`, content);
         // Implement message sending if needed
     }
 }
@@ -87,7 +114,7 @@ async function loadWidget(moduleSource) {
             return module;
         }
     } catch (error) {
-        console.error(`Failed to load widget from ${moduleSource.substring(0, 100)}...:`, error);
+        log(LOG_LEVELS.ERROR, `Failed to load widget from ${moduleSource.substring(0, 100)}...:`, error);
         return null;
     }
 }
@@ -96,9 +123,17 @@ async function loadWidget(moduleSource) {
 async function fetchWidgetConfigs() {
     try {
         const response = await fetch('/api/widgets');
-        return await response.json();
+        const data = await response.json();
+        
+        // Set log level if provided in the response
+        if (data.logLevel !== undefined) {
+            currentLogLevel = LOG_LEVELS[data.logLevel] ?? LOG_LEVELS.INFO;
+            log(LOG_LEVELS.INFO, `Log level set to: ${data.logLevel}`);
+        }
+        
+        return data.widgets || data; // Return widgets data
     } catch (error) {
-        console.error('Failed to fetch widget configs:', error);
+        log(LOG_LEVELS.ERROR, 'Failed to fetch widget configs:', error);
         return {};
     }
 }
@@ -110,15 +145,15 @@ async function initializeWidgets() {
     for (const [widgetId, config] of Object.entries(widgetConfigs)) {
         const container = document.getElementById(widgetId);
         if (!container) {
-            console.warn(`Element with id ${widgetId} not found`);
+            log(LOG_LEVELS.WARN, `Element with id ${widgetId} not found`);
             continue;
         }
 
         let element;
         // Add debug logging for Plotly detection
-        console.log(`[Widget ${widgetId}] Module URL:`, config.moduleUrl);
+        log(LOG_LEVELS.DEBUG, `[Widget ${widgetId}] Module URL:`, config.moduleUrl);
         const isPlotlyWidget = config.moduleUrl?.toLowerCase().includes('plotly');
-        console.log(`[Widget ${widgetId}] Is Plotly widget:`, isPlotlyWidget);
+        log(LOG_LEVELS.DEBUG, `[Widget ${widgetId}] Is Plotly widget:`, isPlotlyWidget);
         
         if (USE_SHADOW_DOM && !isPlotlyWidget) {
             // Use Shadow DOM for non-Plotly widgets
@@ -154,7 +189,7 @@ async function initializeWidgets() {
 
             // Initialize default values for this widget
             for (const [key, value] of Object.entries(config.defaults || {})) {
-                console.log(`[WidgetModel ${widgetId}] Setting default value for ${key}=${value}`);
+                log(LOG_LEVELS.DEBUG, `[WidgetModel ${widgetId}] Setting default value for ${key}=${value}`);
                 widgetModel.set(key, value);
             }
             widgetModel.save_changes();
@@ -166,7 +201,7 @@ async function initializeWidgets() {
                     el: element
                 });
             } catch (error) {
-                console.error(`Failed to render widget ${widgetId}:`, error);
+                log(LOG_LEVELS.ERROR, `Failed to render widget ${widgetId}:`, error);
             }
         }
     }
@@ -182,7 +217,7 @@ class WebSocketManager {
         this.sessionId = document.cookie.split('; ')
             .find(row => row.startsWith('session_id='))
             ?.split('=')[1];
-        console.log(`[WebSocketManager] Created with clientId ${this.clientId} and sessionId ${this.sessionId}`);
+        log(LOG_LEVELS.INFO, `[WebSocketManager] Created with clientId ${this.clientId} and sessionId ${this.sessionId}`);
         this.connect();
         this.widgetModels = new Map();
     }
@@ -195,15 +230,15 @@ class WebSocketManager {
     }
 
     connect() {
-        console.log(`[WebSocketManager ${this.clientId}] Connecting to WebSocket...`);
+        log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Connecting to WebSocket...`);
         this.ws = new WebSocket(`ws://${window.location.host}/ws/${this.clientId}/${this.sessionId}`);
         
         this.ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
-            console.log(`[WebSocketManager ${this.clientId}] Received message:`, message);
+            log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Received message:`, message);
             
             if (message.type === 'error') {
-                console.error(`[WebSocketManager ${this.clientId}] Error from backend:`, message);
+                log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error from backend:`, message);
                 const errorMessage = `Error: ${message.error_type}\n${message.message}\n\nTraceback:\n${message.traceback || 'No traceback available'}`;
                 this.showErrorModal(errorMessage);
                 return;
@@ -211,34 +246,34 @@ class WebSocketManager {
             
             const model = this.widgetModels.get(message.widget_id);
             if (model) {
-                console.log(`[WebSocketManager ${this.clientId}] Found model for widget ${message.widget_id}`);
+                log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Found model for widget ${message.widget_id}`);
                 // Update the model without triggering a send back to server
                 model._suppressSync = true;
                 model.set(message.property, message.value);
                 model._suppressSync = false;
                 
                 // Trigger the general 'change' event
-                console.log(`[WebSocketManager ${this.clientId}] Triggering general change event`);
+                log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Triggering general change event`);
                 model.trigger('change', {
                     property: message.property,
                     value: message.value
                 });
             } else {
-                console.warn(`[WebSocketManager ${this.clientId}] No model found for widget ${message.widget_id}`);
+                log(LOG_LEVELS.WARN, `[WebSocketManager ${this.clientId}] No model found for widget ${message.widget_id}`);
             }
         };
 
         this.ws.onopen = () => {
-            console.log(`[WebSocketManager] WebSocket connection established`);
+            log(LOG_LEVELS.INFO, `[WebSocketManager] WebSocket connection established`);
         };
 
         this.ws.onclose = () => {
-            console.log(`[WebSocketManager] WebSocket connection closed, attempting to reconnect...`);
+            log(LOG_LEVELS.INFO, `[WebSocketManager] WebSocket connection closed, attempting to reconnect...`);
             setTimeout(() => this.connect(), 1000);
         };
 
         this.ws.onerror = (error) => {
-            console.error(`[WebSocketManager] WebSocket error:`, error);
+            log(LOG_LEVELS.ERROR, `[WebSocketManager] WebSocket error:`, error);
         };
     }
 
@@ -249,10 +284,10 @@ class WebSocketManager {
                 property: property,
                 value: value
             };
-            console.log(`[WebSocketManager] Sending update:`, message);
+            log(LOG_LEVELS.DEBUG, `[WebSocketManager] Sending update:`, message);
             this.ws.send(JSON.stringify(message));
         } else {
-            console.warn(`[WebSocketManager] Cannot send update - WebSocket not open`);
+            log(LOG_LEVELS.WARN, `[WebSocketManager] Cannot send update - WebSocket not open`);
         }
     }
 }
