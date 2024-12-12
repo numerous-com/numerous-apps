@@ -3,7 +3,7 @@ requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "numerous-app"
+name = "numerous-apps"
 version = "0.0.1"
 description = "Application package for numerous"
 authors = [
