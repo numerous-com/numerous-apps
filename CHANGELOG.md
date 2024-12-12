@@ -2,6 +2,31 @@
 
 
 
+## v0.0.2 (2024-12-12)
+
+### Fix
+
+* fix(apps): Implement logging utility and enhance debug information in numerous.js
+
+- Introduced a logging utility with adjustable log levels (DEBUG, INFO, WARN, ERROR, NONE) to standardize logging across the application.
+- Replaced console.log statements with the new logging utility for better control over log output.
+- Added functionality to set log levels dynamically based on widget configuration.
+- Improved error handling and debug information throughout the WidgetModel and WebSocketManager classes.
+
+These changes enhance the maintainability of the code and provide clearer insights during development and debugging. ([`c9a1ffe`](https://github.com/numerous-com/numerous-apps/commit/c9a1ffe6f5c1f0df5397dc379f091bb063fb86b2))
+
+### Unknown
+
+* Refactor project structure and update documentation
+
+- Changed project name from &#34;numerous-app&#34; to &#34;numerous-apps&#34; in pyproject.toml.
+- Deleted the empty README.md file.
+- Updated docs/apps.md to reflect the new project name and added a new title.
+- Expanded docs/README.md with a comprehensive overview of the Numerous Apps framework, including key features and benefits.
+
+These changes improve project clarity and enhance the documentation for better user understanding. ([`70663a5`](https://github.com/numerous-com/numerous-apps/commit/70663a59abc06894291be671e9b24d40d7406789))
+
+
 ## v0.0.1 (2024-12-11)
 
 ### Fix

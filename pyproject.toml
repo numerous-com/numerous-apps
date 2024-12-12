@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "numerous-apps"
-version = "0.0.1"
+version = "0.0.2"
 description = "Application package for numerous"
 authors = [
     {name = "Lasse Thomsen", email = "lasse.thomsen@numerous.com"},
