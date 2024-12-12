@@ -231,7 +231,10 @@ class WebSocketManager {
 
     connect() {
         log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Connecting to WebSocket...`);
-        this.ws = new WebSocket(`ws://${window.location.host}/ws/${this.clientId}/${this.sessionId}`);
+        // Detect if is secure  
+        const isSecure = window.location.protocol === 'https:';
+        const wsProtocol = isSecure ? 'wss:' : 'ws:';
+        this.ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${this.clientId}/${this.sessionId}`);
         
         this.ws.onmessage = (event) => {
             const message = JSON.parse(event.data);

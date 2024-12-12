@@ -82,13 +82,17 @@ backend.mount("/numerous-static", StaticFiles(directory=str(PACKAGE_DIR / "stati
 widget_states: Dict[str, Any] = {}
 
 class Backend:
-    def __init__(self, module_path: str|Path, app_name: str, dev: bool = False, log_level: str = 'INFO') -> None:
+    def __init__(self, module_path: str|Path, app_name: str, 
+                 dev: bool = False, log_level: str = 'INFO',
+                 host: str = '127.0.0.1', port: int = 8000) -> None:
         self.module_path = module_path
         self.app_name = app_name
         self.dev = True if dev else False
         self.backend = backend
         self.sessions: Dict[str, SessionData] = {}
         self.connections: Dict[str, Dict[str, WebSocket]] = {}
+        self.host = host
+        self.port = port
         
         # Set log level
         log_level = getattr(logging, log_level.upper())
@@ -432,7 +436,7 @@ class Backend:
     def run(self) -> None:
         """Start the FastAPI server"""
         try:
-            uvicorn.run(self.backend, host="127.0.0.1", port=8000)
+            uvicorn.run(self.backend, host=self.host, port=self.port)
         except KeyboardInterrupt:
             logger.info("Shutting down server...")
             # Clean up all sessions and their processes

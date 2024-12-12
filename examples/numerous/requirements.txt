@@ -1,1 +1,2 @@
-plotly
+numpy
+numerous-widgets

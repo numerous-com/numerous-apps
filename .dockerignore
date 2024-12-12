@@ -1,0 +1,7 @@
+.venv
+.gitignore
+.dockerignore
+.mypy_cache
+.ruff_cache
+.DS_Store
+

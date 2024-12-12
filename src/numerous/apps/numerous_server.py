@@ -20,7 +20,7 @@ def main() -> None:
     
     abs_module_path = Path(module_path).resolve()
     
-    backend = Backend(abs_module_path, app_name, log_level=args.log_level, dev=args.dev)
+    backend = Backend(abs_module_path, app_name, log_level=args.log_level, dev=args.dev, host=args.host, port=args.port)
     backend.run()
 
 if __name__ == '__main__':
