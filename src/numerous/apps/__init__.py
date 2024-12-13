@@ -1,1 +1,1 @@
-from .app import app as app
+from .app import create_app as create_app

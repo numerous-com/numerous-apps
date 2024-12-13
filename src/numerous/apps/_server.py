@@ -30,7 +30,7 @@ def _get_session(session_id: str, base_dir: str, module_path: str, template: str
         
 
     if session_id not in sessions:
-        #logger.info(f"Creating new session {session_id}. Total sessions: {len(sessions) + 1}")
+        logger.info(f"Creating new session {session_id}. Total sessions: {len(sessions) + 1}")
         
         send_queue = Queue()
         receive_queue = Queue()
@@ -92,7 +92,7 @@ def _app_process(
 ) -> None:
     """Run the app in a separate process"""
     try:
-        #logger.debug(f"[Backend] Running app from {module_string}")
+        logger.debug(f"[Backend] Running app from {module_string}")
 
         # Add cwd to a path so that imports from BASE_DIR work
         sys.path.append(cwd)
@@ -107,13 +107,14 @@ def _app_process(
         if spec is None or spec.loader is None:
             raise ImportError(f"Could not load module: {module_string}")
         module = importlib.util.module_from_spec(spec)
+        module.__process__ = True
         spec.loader.exec_module(module)
 
         _app_widgets = None
         # Iterate over all attributes of the module
         for name, value in module.__dict__.items():
             if isinstance(value, NumerousApp):
-                _app_widgets = value.state.config.widgets
+                _app_widgets = value.widgets
                 break
 
         if _app_widgets is None:
@@ -122,10 +123,10 @@ def _app_process(
         _execute(send_queue, receive_queue, session_id, _app_widgets, template)
 
     except (KeyboardInterrupt, SystemExit):
-        #logger.info(f"Shutting down process for session {session_id}")
-        pass
+        logger.info(f"Shutting down process for session {session_id}")
+        
     except Exception as e:
-        #logger.error(f"Error in process for session {session_id}: {e}, traceback: {str(traceback.format_exc())[:100]}")
+        logger.error(f"Error in process for session {session_id}: {e}, traceback: {str(traceback.format_exc())[:100]}")
         send_queue.put({
             "type": "error",
             "error_type": type(e).__name__,
@@ -158,7 +159,7 @@ def _create_handler(wid: str, trait: str, send_queue: Queue) -> Callable[[Any], 
         # Skip broadcasting for 'clicked' events to prevent recursion
         if trait == 'clicked':
             return
-        #logger.debug(f"[App] Broadcasting trait change for {wid}: {change.name} = {change.new}")
+        logger.debug(f"[App] Broadcasting trait change for {wid}: {change.name} = {change.new}")
         send_queue.put({
             'type': 'widget_update',
             'widget_id': wid,

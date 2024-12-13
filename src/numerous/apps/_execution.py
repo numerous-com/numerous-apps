@@ -132,7 +132,7 @@ def _execute(send_queue: Queue, receive_queue: Queue, session_id: str, widgets: 
     send_queue.put({
         "type": "init-config",
         "widgets": list(transformed_widgets.keys()),
-        "widget_configs": transformed_widgets,#transformed_widgets,
+        "widget_configs": transformed_widgets,
         "template": template
     })
 
@@ -153,14 +153,14 @@ def _handle_widget_message(message: Dict[str, Any], send_queue: Queue, widgets: 
     new_value = message.get('value')
 
     if not all([widget_id, property_name is not None]):
-        #logger.error("Invalid widget message format")
+        logger.error("Invalid widget message format")
         return
 
     try:
         # Get widget and validate it exists
         widget = widgets.get(widget_id)
         if not widget:
-            #logger.error(f"Widget {widget_id} not found")
+            logger.error(f"Widget {widget_id} not found")
             return
 
         # Update the widget state
@@ -175,7 +175,7 @@ def _handle_widget_message(message: Dict[str, Any], send_queue: Queue, widgets: 
         }, timeout=1.0)  # Add timeout
         
     except Exception as e:
-        #logger.error(f"Failed to handle widget message: {e}")
+        logger.error(f"Failed to handle widget message: {e}")
         send_queue.put({
             'type': 'error',
             'error_type': type(e).__name__,

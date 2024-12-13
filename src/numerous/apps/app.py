@@ -133,7 +133,7 @@ async def home(request: Request) -> Response:
         error_message = (
             f"Template contains undefined variables that don't match any widgets: {', '.join(unknown_vars)}"
         )
-        #logger.error(error_message)
+        logger.error(error_message)
         response = HTMLResponse(content=templates.get_template("error.html.j2").render({    
             "error_title": "Template Error",
             "error_message": error_message
@@ -207,16 +207,16 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
                 try:
                     data = await websocket.receive_text()
                     message = json.loads(data)
-                    #logger.debug(f"Received message from client {client_id}: {message}")
+                    logger.debug(f"Received message from client {client_id}: {message}")
                     session['receive_queue'].put(message)
                 except WebSocketDisconnect:
-                    #logger.debug(f"WebSocket disconnected for client {client_id}")
+                    logger.debug(f"WebSocket disconnected for client {client_id}")
                     raise  # Re-raise to trigger cleanup
         except (asyncio.CancelledError, WebSocketDisconnect):
-            #logger.debug(f"Receive task cancelled for client {client_id}")
+            logger.debug(f"Receive task cancelled for client {client_id}")
             raise  # Re-raise to trigger cleanup
         except Exception as e:
-            #logger.debug(f"Receive error for client {client_id}: {e}")
+            logger.debug(f"Receive error for client {client_id}: {e}")
             raise  # Re-raise to trigger cleanup
 
     async def send_messages() -> None:
@@ -225,10 +225,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
                 try:
                     if not session['send_queue'].empty():
                         response = session['send_queue'].get()
-                        #logger.debug(f"Sending message to client {client_id}: {response}")
+                        logger.debug(f"Sending message to client {client_id}: {response}")
                         
                         if response.get('type') == 'widget_update':
-                            #logger.debug("Broadcasting widget update to other clients")
+                            logger.debug("Broadcasting widget update to other clients")
                             update_message = {
                                 'widget_id': response['widget_id'],
                                 'property': response['property'],
@@ -236,10 +236,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
                             }
                             for other_id, conn in _app.state.config.connections[session_id].items():
                                 try:
-                                    #logger.debug(f"Broadcasting to client {other_id}: {str(update_message)[:100]}")
+                                    logger.debug(f"Broadcasting to client {other_id}: {str(update_message)[:100]}")
                                     await conn.send_text(json.dumps(update_message))
                                 except Exception as e:
-                                    #logger.debug(f"Error broadcasting to client {other_id}: {e}")
+                                    logger.debug(f"Error broadcasting to client {other_id}: {e}")
                                     raise  # Re-raise to trigger cleanup
                         elif response.get('type') == 'init-config':
                             await websocket.send_text(json.dumps(response))
@@ -249,13 +249,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
                                 await websocket.send_text(json.dumps(response))
                     await asyncio.sleep(0.01)
                 except WebSocketDisconnect:
-                    #logger.debug(f"WebSocket disconnected for client {client_id}")
+                    logger.debug(f"WebSocket disconnected for client {client_id}")
                     raise  # Re-raise to trigger cleanup
         except (asyncio.CancelledError, WebSocketDisconnect):
-            #logger.debug(f"Send task cancelled for client {client_id}")
+            logger.debug(f"Send task cancelled for client {client_id}")
             raise  # Re-raise to trigger cleanup
         except Exception as e:
-            #logger.debug(f"Send error for client {client_id}: {e}")
+            logger.debug(f"Send error for client {client_id}: {e}")
             raise  # Re-raise to trigger cleanup
 
     try:
@@ -265,19 +265,19 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
             send_messages()
         )
     except (asyncio.CancelledError, WebSocketDisconnect):
-        #logger.debug(f"WebSocket tasks cancelled for client {client_id}")
-        pass
+        logger.debug(f"WebSocket tasks cancelled for client {client_id}")
+        
     finally:
         # Clean up connection from session-specific dictionary
         if session_id in _app.state.config.connections and client_id in _app.state.config.connections[session_id]:
-            #logger.info(f"Client {client_id} disconnected")
+            logger.info(f"Client {client_id} disconnected")
             del _app.state.config.connections[session_id][client_id]
             
             # If this was the last connection for this session, clean up the session
             if not _app.state.config.connections[session_id]:
                 del _app.state.config.connections[session_id]
                 if session_id in _app.state.config.sessions:
-                    #logger.info(f"Removing session {session_id}. Sessions remaining: {len(_app.state.config.sessions) - 1}")
+                    logger.info(f"Removing session {session_id}. Sessions remaining: {len(_app.state.config.sessions) - 1}")
                     _app.state.config.sessions[session_id]["process"].terminate()
                     _app.state.config.sessions[session_id]["process"].join()
                     del _app.state.config.sessions[session_id]
@@ -290,21 +290,9 @@ async def serve_main_js() -> Response:
         media_type="application/javascript"
     )
     
-
-
-
-def app(template: str, dev: bool = False, widgets: Dict[str, AnyWidget]|None = None, app_path: Path|str|None = None, **kwargs: Dict[str, Any]) -> None:
+def create_app(template: str, dev: bool = False, widgets: Dict[str, AnyWidget]|None = None, **kwargs: Dict[str, Any]) -> None:
 
     
-
-    # Optional: Configure static files (CSS, JS, images)
-    _app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-
-    # Add new mount for package static files
-    _app.mount("/numerous-static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="numerous_static")
-
-    
-
 
     if widgets is None:
         widgets = {}
@@ -318,6 +306,8 @@ def app(template: str, dev: bool = False, widgets: Dict[str, AnyWidget]|None = N
 
     module_path = None
 
+    is_process = False
+
     # Get the parent frame
     if not (frame := inspect.currentframe()) is None:
         frame = frame.f_back
@@ -329,28 +319,38 @@ def app(template: str, dev: bool = False, widgets: Dict[str, AnyWidget]|None = N
                 
 
             module_path = frame.f_code.co_filename
+
+            if "__process__" in frame.f_locals and frame.f_locals["__process__"]:
+                is_process = True
     
     if module_path is None:
         
         raise ValueError("Could not determine app name or module path")
-            
+    
+    if not is_process:
+        # Optional: Configure static files (CSS, JS, images)
+        _app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+        # Add new mount for package static files
+        _app.mount("/numerous-static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="numerous_static")
 
 
+        config = NumerousAppServerState(dev=dev, main_js=_load_main_js(), sessions={}, 
+                                        connections={}, base_dir=str(BASE_DIR), module_path=str(module_path), 
+                                        template=template,
+                                        internal_templates=templates
+                                        )
+
+        _app.state.config = config
+
+    
     # Sort so ParentVisibility widgets are first in the dict# Sort so ParentVisibility widgets are first in the dict
     widgets = {
         key: value
         for key, value in reversed(sorted(widgets.items(), key=lambda x: isinstance(x[1], ParentVisibility)))
     }
 
-    config = NumerousAppServerState(dev=dev, main_js=_load_main_js(), sessions={}, 
-                                    connections={}, base_dir=str(BASE_DIR), module_path=str(module_path), 
-                                    template=template, widgets=widgets, 
-                                    internal_templates=templates
-                                    )
-
-    _app.state.config = config
-
-    
+    _app.widgets = widgets
     
 
     return _app
