@@ -2,6 +2,20 @@
 
 
 
+## v0.0.3 (2024-12-12)
+
+### Fix
+
+* fix(apps): Update backend initialization and WebSocket connection handling
+
+- Modified the Backend class to accept customizable host and port parameters during initialization, enhancing flexibility for server configuration.
+- Updated the run method in Backend to utilize the new host and port attributes for starting the FastAPI server.
+- Adjusted the numerous_server.py main function to pass host and port arguments from command line options to the Backend instance.
+- Enhanced WebSocket connection logic in numerous.js to dynamically determine the protocol (ws or wss) based on the current page&#39;s security context.
+
+These changes improve the configurability of the backend server and ensure secure WebSocket connections. ([`ca028fc`](https://github.com/numerous-com/numerous-apps/commit/ca028fcbd898ccffff50ff8381ae5afd85afa7fe))
+
+
 ## v0.0.2 (2024-12-12)
 
 ### Fix
