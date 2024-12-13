@@ -1,5 +1,6 @@
 import numerous.widgets as wi
-from numerous.apps import App, tab_visibility
+from numerous.apps import app
+from numerous.apps._builtins import tab_visibility
 from charts import map_widget, chart
 
 # APP UI
@@ -25,4 +26,8 @@ def on_selection_change(event):
 
 selection_widget.observe(on_selection_change, names='value')
 
-app = App(template="index.html.j2", dev=True)
+app = app(template="index.html.j2", dev=True)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
