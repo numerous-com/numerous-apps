@@ -2,6 +2,13 @@
 
 
 
+## v0.0.4 (2024-12-13)
+
+### Fix
+
+* fix(apps): Change to relative paths in template ([`98dd711`](https://github.com/numerous-com/numerous-apps/commit/98dd711f9764efba007437136832d52a6bee8e70))
+
+
 ## v0.0.3 (2024-12-12)
 
 ### Fix
