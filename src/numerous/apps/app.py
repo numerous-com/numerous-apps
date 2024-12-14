@@ -277,6 +277,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
                 del _app.state.config.connections[session_id]
                 if session_id in _app.state.config.sessions:
                     logger.info(f"Removing session {session_id}. Sessions remaining: {len(_app.state.config.sessions) - 1}")
+                    _app.state.config.sessions[session_id]["execution_manager"].request_stop()
                     _app.state.config.sessions[session_id]["execution_manager"].stop()
                     _app.state.config.sessions[session_id]["execution_manager"].join()
                     del _app.state.config.sessions[session_id]

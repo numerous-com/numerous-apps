@@ -132,7 +132,7 @@ def _execute(communication_manager: CommunicationManager, session_id: str, widge
     })
 
     # Listen for messages from the main process
-    while True:
+    while not communication_manager.stop_event.is_set():
         try:
             # Block until a message is available, with a timeout
             message = communication_manager.to_app_instance.receive(timeout=0.1)

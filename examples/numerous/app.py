@@ -26,6 +26,9 @@ def on_selection_change(event):
 
 selection_widget.observe(on_selection_change, names='value')
 
+map_widget = map_widget()
+chart = chart()
+
 app = create_app(template="index.html.j2", dev=True)
 
 if __name__ == "__main__":

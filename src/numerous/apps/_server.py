@@ -11,6 +11,9 @@ import json
 from ._execution import _execute
 from fastapi import FastAPI
 from ._communication import QueueCommunicationManager as CommunicationManager, QueueCommunicationChannel as CommunicationChannel, ThreadedExecutionManager, MultiProcessExecutionManager
+from threading import Event
+from multiprocessing import Event as ProcessEvent
+from queue import Empty
 
 class NumerousApp(FastAPI):
     pass

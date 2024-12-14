@@ -1,11 +1,13 @@
 import numpy as np
 import numerous.widgets as wi
 
-map_widget = wi.MapSelector(points={
-    'New York': [-73.985428, 40.748817],    # New York
-    'Paris': [2.294481, 48.858370],     # Paris
-    'Tokyo': [139.839478, 35.652832]    # Tokyo
-}, center= [2.294481, 48.858370], zoom=1)
+def map_widget():   
+    map_widget = wi.MapSelector(points={
+        'New York': [-73.985428, 40.748817],    # New York
+        'Paris': [2.294481, 48.858370],     # Paris
+        'Tokyo': [139.839478, 35.652832]    # Tokyo
+    }, center= [2.294481, 48.858370], zoom=1)   
+    return map_widget
 
 y = np.array([100, 120, 110, 130, 125, 140, 135, 150, 145, 160, 155, 170])
 months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -14,10 +16,11 @@ months = ["January", "February", "March", "April", "May", "June", "July", "Augus
 temperatures = [5, 6, 9, 14, 18, 22, 25, 24, 20, 15, 10, 6]  # Sample temperatures in °C
 
 # Create a bar chart
-chart = wi.Chart(
-    type="bar",
-    data={
-        "labels": months,
+def chart():
+    chart = wi.Chart(
+        type="bar",
+        data={
+            "labels": months,
         "datasets": [
             {
             "label": "Average Temperature",
@@ -67,9 +70,10 @@ chart = wi.Chart(
                 "position": "right",
                 "title": {
                     "display": True,
-                    "text": "Temperature (°C)"
+                        "text": "Temperature (°C)"
+                    }
                 }
             }
         }
-    }
-)
+    )
+    return chart

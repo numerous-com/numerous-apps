@@ -1,7 +1,7 @@
 import numerous.widgets as wi
 from numerous.apps import create_app
 from numerous.apps._builtins import tab_visibility
-
+from charts import map_widget, chart
 # APP UI
 
 def run_app():
@@ -33,7 +33,9 @@ def run_app():
         "tabs": tabs,
         "tab_show_basic": tab_show_basic,
         "tab_show_map": tab_show_map,
-        "tab_show_chart": tab_show_chart
+        "tab_show_chart": tab_show_chart,
+        "map_widget": map_widget(),
+        "chart": chart()
     }
     c
 

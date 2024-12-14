@@ -3,7 +3,8 @@ from typing import Any, Dict, Optional, Callable
 from abc import ABC, abstractmethod
 import json
 from multiprocessing import Process
-from threading import Thread
+from threading import Thread, Event
+from multiprocessing import Event as ProcessEvent
 
 class CommunicationChannel(ABC):
     @abstractmethod
@@ -35,6 +36,7 @@ class CommunicationManager(ABC):
 
     def __init__(self, session_id:str):
         self.session_id = session_id
+        self.stop_event = None
     
     def serialize(self) -> Dict:
         return {"session_id": self.session_id,
@@ -44,21 +46,22 @@ class CommunicationManager(ABC):
     @abstractmethod
     def deserialize(data: Dict) -> "CommunicationManager":
         pass
+    
+    def request_stop(self):
+        """Request graceful termination of the execution"""
+        if self.stop_event is not None:
+            self.stop_event.set()
 
 class ExecutionManager(ABC):
     def __init__(self, target: Callable, communication_manager: CommunicationManager|None=None):
-
         self.target = target
         self.communication_manager = communication_manager
     
-    def start(self, *args, **kwargs):
-        pass
-    
-    def stop(self):
-        pass
+    def request_stop(self):
+        """Request graceful termination of the execution"""
+        if self.communication_manager is not None and self.communication_manager.stop_event is not None:
+            self.communication_manager.stop_event.set()
 
-    def join(self):
-        pass
 
 class QueueCommunicationChannel(CommunicationChannel):
     def __init__(self, queue: Queue=None):
@@ -89,7 +92,8 @@ class QueueCommunicationManager(CommunicationManager):
         super().__init__(session_id)
         self.to_app_instance = to_app_instance if to_app_instance is not None else QueueCommunicationChannel()
         self.from_app_instance = from_app_instance if from_app_instance is not None else QueueCommunicationChannel()
-    
+        self.stop_event = Event()
+
     def serialize(self) -> str:
         return {
             "session_id": self.session_id,
@@ -106,8 +110,9 @@ class QueueCommunicationManager(CommunicationManager):
 
 class MultiProcessExecutionManager(ExecutionManager):
     def __init__(self, target: Callable, communication_manager: CommunicationManager|None=None):
-        self.process = None
         super().__init__(target, communication_manager)
+        self.process = None
+        
 
     def start(self, *args, **kwargs):
         if self.process is not None:
@@ -130,6 +135,7 @@ class ThreadedExecutionManager(ExecutionManager):
     def __init__(self, target: Callable, communication_manager: CommunicationManager|None=None):
         super().__init__(target, communication_manager)
         self.thread = None
+        self.stop_event = Event()
 
     def start(self, *args, **kwargs):
         if self.thread is not None:
