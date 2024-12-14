@@ -2,6 +2,13 @@
 
 
 
+## v0.0.5 (2024-12-14)
+
+### Fix
+
+* fix(apps): threaded apps ([`1a56352`](https://github.com/numerous-com/numerous-apps/commit/1a563526005eba2c5e3d044c2a2bc8317f9300dc))
+
+
 ## v0.0.4 (2024-12-13)
 
 ### Fix
