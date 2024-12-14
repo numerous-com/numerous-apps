@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Callable
 from abc import ABC, abstractmethod
 import json
 from multiprocessing import Process
+from threading import Thread
 
 class CommunicationChannel(ABC):
     @abstractmethod
@@ -125,4 +126,23 @@ class MultiProcessExecutionManager(ExecutionManager):
         self.process.join()
 
     
+class ThreadedExecutionManager(ExecutionManager):
+    def __init__(self, target: Callable, communication_manager: CommunicationManager|None=None):
+        super().__init__(target, communication_manager)
+        self.thread = None
 
+    def start(self, *args, **kwargs):
+        if self.thread is not None:
+            raise RuntimeError("Thread already running")
+        self.thread = Thread(target=self.target, args=args, kwargs=kwargs)
+        self.thread.start()
+    
+    def stop(self):
+        if self.thread is None:
+            raise RuntimeError("Thread not running")
+        self.thread.join()
+
+    def join(self):
+        if self.thread is None:
+            raise RuntimeError("Thread not running")
+        self.thread.join()

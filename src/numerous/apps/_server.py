@@ -10,7 +10,7 @@ import logging
 import json
 from ._execution import _execute
 from fastapi import FastAPI
-from ._communication import QueueCommunicationManager as CommunicationManager, QueueCommunicationChannel as CommunicationChannel, MultiProcessExecutionManager
+from ._communication import QueueCommunicationManager as CommunicationManager, QueueCommunicationChannel as CommunicationChannel, ThreadedExecutionManager, MultiProcessExecutionManager
 
 class NumerousApp(FastAPI):
     pass
@@ -26,7 +26,7 @@ class SessionData(TypedDict):
     process: MultiProcessExecutionManager
 
 
-def _get_session(session_id: str, base_dir: str, module_path: str, template: str, sessions: Dict[str, SessionData]) -> SessionData:
+def _get_session(allow_threaded: bool, session_id: str, base_dir: str, module_path: str, template: str, sessions: Dict[str, SessionData]) -> SessionData:
         # Generate a session ID if one doesn't exist
         
 
@@ -35,11 +35,16 @@ def _get_session(session_id: str, base_dir: str, module_path: str, template: str
         
 
         communication_manager = CommunicationManager(session_id)
-
-        execution_manager = MultiProcessExecutionManager(
-            target=_app_process, 
-            communication_manager=communication_manager
-        )
+        if allow_threaded:
+            execution_manager = ThreadedExecutionManager(
+                target=_app_process, 
+                communication_manager=communication_manager
+            )
+        else:
+            execution_manager = MultiProcessExecutionManager(
+                target=_app_process, 
+                communication_manager=communication_manager
+            )
         execution_manager.start(session_id, str(base_dir), module_path, template, communication_manager)
 
         sessions[session_id] = {

@@ -6,7 +6,6 @@ from pathlib import Path
 import json
 import asyncio
 import uuid
-from multiprocessing import Process, Queue
 import logging
 import numpy as np
 from starlette.websockets import WebSocketDisconnect
@@ -23,7 +22,6 @@ import inspect
 from ._builtins import ParentVisibility
 from ._server import _load_main_js, NumerousApp
 from ._execution import WidgetConfig
-QueueType = Queue
 
 class AppProcessError(Exception):
     pass
@@ -31,7 +29,7 @@ class AppProcessError(Exception):
 
 
 # Setup logging
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 _app = NumerousApp()
@@ -61,6 +59,7 @@ class NumerousAppServerState:
     sessions: Dict[str, SessionData]
     connections: Dict[str, Dict[str, WebSocket]]
     widgets: Dict[str, AnyWidget] = field(default_factory=dict)
+    allow_threaded: bool = False
 
 def wrap_html(key: str) -> str:
     return f"<div id=\"{key}\"></div>"
@@ -69,7 +68,7 @@ def wrap_html(key: str) -> str:
 async def home(request: Request) -> Response:
     session_id = str(uuid.uuid4())
     try:
-        _session = _get_session(session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions)
+        _session = _get_session(_app.state.config.allow_threaded, session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions)
 
         if _session["config"].get("type") == "error":
             if _app.state.config.dev:
@@ -177,7 +176,7 @@ async def get_widgets(request: Request) -> Dict[str, WidgetConfig]:
         session_id = request.cookies.get("session_id")
         if session_id is None:
             return {}
-        _session = _get_session(session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions)
+        _session = _get_session(_app.state.config.allow_threaded, session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions)
 
         app_definition = _session["config"]
         widget_configs = app_definition.get("widget_configs", {})
@@ -200,7 +199,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
     # Store connection in session-specific dictionary
     _app.state.config.connections[session_id][client_id] = websocket
 
-    session = _get_session(session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions)
+    session = _get_session(_app.state.config.allow_threaded, session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions)
     async def receive_messages() -> None:
         try:
             while True:
@@ -278,8 +277,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
                 del _app.state.config.connections[session_id]
                 if session_id in _app.state.config.sessions:
                     logger.info(f"Removing session {session_id}. Sessions remaining: {len(_app.state.config.sessions) - 1}")
-                    _app.state.config.sessions[session_id]["process"].terminate()
-                    _app.state.config.sessions[session_id]["process"].join()
+                    _app.state.config.sessions[session_id]["execution_manager"].stop()
+                    _app.state.config.sessions[session_id]["execution_manager"].join()
                     del _app.state.config.sessions[session_id]
 
 @_app.get("/numerous.js")
@@ -290,7 +289,7 @@ async def serve_main_js() -> Response:
         media_type="application/javascript"
     )
     
-def create_app(template: str, dev: bool = False, widgets: Dict[str, AnyWidget]|None = None, **kwargs: Dict[str, Any]) -> None:
+def create_app(template: str, dev: bool = False, widgets: Dict[str, AnyWidget]|None = None, app_generator: Callable|None=None, **kwargs: Dict[str, Any]) -> None:
 
     
 
@@ -327,6 +326,12 @@ def create_app(template: str, dev: bool = False, widgets: Dict[str, AnyWidget]|N
         
         raise ValueError("Could not determine app name or module path")
     
+    allow_threaded = False
+    if app_generator is not None:
+        allow_threaded = True
+        widgets = app_generator()
+    
+    logger.info(f"App instances will be {'threaded' if allow_threaded else 'multiprocessed'}")
     if not is_process:
         # Optional: Configure static files (CSS, JS, images)
         _app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -338,7 +343,8 @@ def create_app(template: str, dev: bool = False, widgets: Dict[str, AnyWidget]|N
         config = NumerousAppServerState(dev=dev, main_js=_load_main_js(), sessions={}, 
                                         connections={}, base_dir=str(BASE_DIR), module_path=str(module_path), 
                                         template=template,
-                                        internal_templates=templates
+                                        internal_templates=templates,
+                                        allow_threaded=allow_threaded
                                         )
 
         _app.state.config = config
