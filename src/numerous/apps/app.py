@@ -208,7 +208,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
                     data = await websocket.receive_text()
                     message = json.loads(data)
                     logger.debug(f"Received message from client {client_id}: {message}")
-                    session['communication_manager'].to_app_instance.send(message)
+                    session['execution_manager'].communication_manager.to_app_instance.send(message)
                 except WebSocketDisconnect:
                     logger.debug(f"WebSocket disconnected for client {client_id}")
                     raise  # Re-raise to trigger cleanup
@@ -223,8 +223,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
         try:
             while True:
                 try:
-                    if not session['communication_manager'].from_app_instance.empty():
-                        response = session['communication_manager'].from_app_instance.receive()
+                    if not session['execution_manager'].communication_manager.from_app_instance.empty():
+                        response = session['execution_manager'].communication_manager.from_app_instance.receive()
                         logger.debug(f"Sending message to client {client_id}: {response}")
                         
                         if response.get('type') == 'widget_update':

@@ -1,7 +1,8 @@
 from multiprocessing import Queue
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 from abc import ABC, abstractmethod
 import json
+from multiprocessing import Process
 
 class CommunicationChannel(ABC):
     @abstractmethod
@@ -29,6 +30,35 @@ class CommunicationChannel(ABC):
     def deserialize(data: Dict) -> "CommunicationChannel":
         pass
 
+class CommunicationManager(ABC):
+
+    def __init__(self, session_id:str):
+        self.session_id = session_id
+    
+    def serialize(self) -> Dict:
+        return {"session_id": self.session_id,
+                }
+    
+    @staticmethod
+    @abstractmethod
+    def deserialize(data: Dict) -> "CommunicationManager":
+        pass
+
+class ExecutionManager(ABC):
+    def __init__(self, target: Callable, communication_manager: CommunicationManager|None=None):
+
+        self.target = target
+        self.communication_manager = communication_manager
+    
+    def start(self, *args, **kwargs):
+        pass
+    
+    def stop(self):
+        pass
+
+    def join(self):
+        pass
+
 class QueueCommunicationChannel(CommunicationChannel):
     def __init__(self, queue: Queue=None):
         self.queue = queue if queue is not None else Queue()
@@ -52,19 +82,6 @@ class QueueCommunicationChannel(CommunicationChannel):
     def deserialize(data: Dict) -> "QueueCommunicationChannel":
         return QueueCommunicationChannel(data["queue"])
 
-class CommunicationManager(ABC):
-
-    def __init__(self, session_id:str):
-        self.session_id = session_id
-    
-    def serialize(self) -> Dict:
-        return {"session_id": self.session_id,
-                }
-    
-    @staticmethod
-    @abstractmethod
-    def deserialize(data: Dict) -> "CommunicationManager":
-        pass
 
 class QueueCommunicationManager(CommunicationManager):
     def __init__(self, session_id:str, to_app_instance: QueueCommunicationChannel=None, from_app_instance: QueueCommunicationChannel=None):
@@ -84,4 +101,28 @@ class QueueCommunicationManager(CommunicationManager):
         return QueueCommunicationManager(data["session_id"], 
                                          CommunicationChannel.deserialize(data["to_app_instance"]), 
                                          CommunicationChannel.deserialize(data["from_app_instance"]))
+
+
+class MultiProcessExecutionManager(ExecutionManager):
+    def __init__(self, target: Callable, communication_manager: CommunicationManager|None=None):
+        self.process = None
+        super().__init__(target, communication_manager)
+
+    def start(self, *args, **kwargs):
+        if self.process is not None:
+            raise RuntimeError("Process already running")
+        self.process = Process(target=self.target, args=args, kwargs=kwargs)
+        self.process.start()
+
+    def stop(self):
+        if self.process is None:
+            raise RuntimeError("Process not running")
+        self.process.terminate()
+
+    def join(self):
+        if self.process is None:
+            raise RuntimeError("Process not running")
+        self.process.join()
+
+    
 

@@ -6,11 +6,11 @@ import importlib
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from typing_extensions import TypedDict
 import logging
-from multiprocessing import Process
+
 import json
 from ._execution import _execute
 from fastapi import FastAPI
-from ._communication import QueueCommunicationManager as CommunicationManager, QueueCommunicationChannel as CommunicationChannel
+from ._communication import QueueCommunicationManager as CommunicationManager, QueueCommunicationChannel as CommunicationChannel, MultiProcessExecutionManager
 
 class NumerousApp(FastAPI):
     pass
@@ -23,7 +23,7 @@ class AppInitError(Exception):
 
 
 class SessionData(TypedDict):
-    process: Process
+    process: MultiProcessExecutionManager
 
 
 def _get_session(session_id: str, base_dir: str, module_path: str, template: str, sessions: Dict[str, SessionData]) -> SessionData:
@@ -36,22 +36,21 @@ def _get_session(session_id: str, base_dir: str, module_path: str, template: str
 
         communication_manager = CommunicationManager(session_id)
 
-        process = Process(
+        execution_manager = MultiProcessExecutionManager(
             target=_app_process, 
-            args=(session_id, str(base_dir), module_path, template, communication_manager)
+            communication_manager=communication_manager
         )
-        process.start()
+        execution_manager.start(session_id, str(base_dir), module_path, template, communication_manager)
 
         sessions[session_id] = {
-            "process": process,
-            "communication_manager": communication_manager,
+            "execution_manager": execution_manager,
             "config": {}
         }
 
         _session = sessions[session_id]
 
         # Get the app definition
-        app_definition = _session["communication_manager"].from_app_instance.receive(timeout=3)
+        app_definition = _session["execution_manager"].communication_manager.from_app_instance.receive(timeout=3)
 
         # Check message type
         if app_definition.get("type") == "init-config":
