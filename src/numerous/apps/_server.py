@@ -3,14 +3,14 @@ from pathlib import Path
 import sys
 import traceback
 import importlib
-from multiprocessing import Queue
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from typing_extensions import TypedDict
 import logging
-from multiprocessing import Process, Queue
+from multiprocessing import Process
 import json
 from ._execution import _execute
 from fastapi import FastAPI
+from ._communication import QueueCommunicationManager as CommunicationManager, QueueCommunicationChannel as CommunicationChannel
 
 class NumerousApp(FastAPI):
     pass
@@ -25,6 +25,7 @@ class AppInitError(Exception):
 class SessionData(TypedDict):
     process: Process
 
+
 def _get_session(session_id: str, base_dir: str, module_path: str, template: str, sessions: Dict[str, SessionData]) -> SessionData:
         # Generate a session ID if one doesn't exist
         
@@ -32,25 +33,25 @@ def _get_session(session_id: str, base_dir: str, module_path: str, template: str
     if session_id not in sessions:
         logger.info(f"Creating new session {session_id}. Total sessions: {len(sessions) + 1}")
         
-        send_queue = Queue()
-        receive_queue = Queue()
+
+        communication_manager = CommunicationManager(session_id)
+
         process = Process(
             target=_app_process, 
-            args=(session_id, str(base_dir), module_path, send_queue, receive_queue, template)
+            args=(session_id, str(base_dir), module_path, template, communication_manager)
         )
         process.start()
 
         sessions[session_id] = {
             "process": process,
-            "send_queue": send_queue,
-            "receive_queue": receive_queue,
+            "communication_manager": communication_manager,
             "config": {}
         }
 
         _session = sessions[session_id]
 
         # Get the app definition
-        app_definition = _session["send_queue"].get()
+        app_definition = _session["communication_manager"].from_app_instance.receive(timeout=3)
 
         # Check message type
         if app_definition.get("type") == "init-config":
@@ -86,9 +87,8 @@ def _app_process(
     session_id: str,
     cwd: str,
     module_string: str,
-    send_queue: Queue,
-    receive_queue: Queue,
-    template: str
+    template: str,
+    communication_manager: CommunicationManager
 ) -> None:
     """Run the app in a separate process"""
     try:
@@ -120,14 +120,14 @@ def _app_process(
         if _app_widgets is None:
             raise ValueError("No NumerousApp instance found in the module")
         
-        _execute(send_queue, receive_queue, session_id, _app_widgets, template)
+        _execute(communication_manager, session_id, _app_widgets, template)
 
     except (KeyboardInterrupt, SystemExit):
         logger.info(f"Shutting down process for session {session_id}")
         
     except Exception as e:
         logger.error(f"Error in process for session {session_id}: {e}, traceback: {str(traceback.format_exc())[:100]}")
-        send_queue.put({
+        communication_manager.from_app_instance.send({
             "type": "error",
             "error_type": type(e).__name__,
             "message": str(e),
@@ -135,14 +135,14 @@ def _app_process(
         })
     finally:
         # Clean up queues
-        while not send_queue.empty():
+        while not communication_manager.to_app_instance.empty():
             try:
-                send_queue.get_nowait()
+                communication_manager.to_app_instance.get_nowait()
             except Exception:
                 pass
-        while not receive_queue.empty():
+        while not communication_manager.from_app_instance.empty():
             try:
-                receive_queue.get_nowait()
+                communication_manager.from_app_instance.get_nowait()
             except Exception:
                 pass
 
@@ -154,13 +154,13 @@ def _load_main_js() -> str:
             return ""
         return main_js_path.read_text()
 
-def _create_handler(wid: str, trait: str, send_queue: Queue) -> Callable[[Any], None]:
+def _create_handler(wid: str, trait: str, send_channel: CommunicationChannel) -> Callable[[Any], None]:
     def sync_handler(change: Any) -> None:
         # Skip broadcasting for 'clicked' events to prevent recursion
         if trait == 'clicked':
             return
         logger.debug(f"[App] Broadcasting trait change for {wid}: {change.name} = {change.new}")
-        send_queue.put({
+        send_channel.send({
             'type': 'widget_update',
             'widget_id': wid,
             'property': change.name,

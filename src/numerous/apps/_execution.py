@@ -1,13 +1,12 @@
-from multiprocessing import Queue
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from anywidget import AnyWidget
 import logging
-import traceback
 from queue import Empty
 import json
 from typing import TypedDict
 import numpy as np
-
+from ._communication import QueueCommunicationManager as CommunicationManager, CommunicationChannel as CommunicationChannel
+    
 ignored_traits = [
             "comm",
             "layout",
@@ -33,17 +32,13 @@ ignored_traits = [
 
 
 
+
 class WidgetConfig(TypedDict):
     moduleUrl: str
     defaults: Dict[str, Any]
     keys: List[str]
     css: Optional[str]
 
-class SessionData(TypedDict):
-
-    send_queue: Queue
-    receive_queue: Queue
-    config: Dict[str, Any]
 
 class NumpyJSONEncoder(json.JSONEncoder):
     def default(self, obj: Any) -> Any:
@@ -100,7 +95,7 @@ def _transform_widgets(widgets: Dict[str, AnyWidget]) -> Dict[str, WidgetConfig]
 
 logger = logging.getLogger(__name__)
 
-def _execute(send_queue: Queue, receive_queue: Queue, session_id: str, widgets: Dict[str, AnyWidget], template: str) -> None:
+def _execute(communication_manager: CommunicationManager, session_id: str, widgets: Dict[str, AnyWidget], template: str) -> None:
     """Handle widget logic in the separate process"""
 
     transformed_widgets = _transform_widgets(widgets)
@@ -116,7 +111,7 @@ def _execute(send_queue: Queue, receive_queue: Queue, session_id: str, widgets: 
                     if trait == 'clicked':
                         return
                     #logger.debug(f"[App] Broadcasting trait change for {wid}: {change.name} = {change.new}")
-                    send_queue.put({
+                    communication_manager.from_app_instance.send({
                         'type': 'widget_update',
                         'widget_id': wid,
                         'property': change.name,
@@ -129,7 +124,7 @@ def _execute(send_queue: Queue, receive_queue: Queue, session_id: str, widgets: 
 
     #json_transformed_widgets = json.dumps(transformed_widgets, cls=NumpyJSONEncoder)
     # Send initial app configuration
-    send_queue.put({
+    communication_manager.from_app_instance.send({
         "type": "init-config",
         "widgets": list(transformed_widgets.keys()),
         "widget_configs": transformed_widgets,
@@ -140,13 +135,13 @@ def _execute(send_queue: Queue, receive_queue: Queue, session_id: str, widgets: 
     while True:
         try:
             # Block until a message is available, with a timeout
-            message = receive_queue.get(timeout=0.1)
-            _handle_widget_message(message, send_queue, widgets=widgets)
+            message = communication_manager.to_app_instance.receive(timeout=0.1)
+            _handle_widget_message(message, communication_manager.from_app_instance, widgets=widgets)
         except Empty:
             # No message available, continue waiting
             continue
 
-def _handle_widget_message(message: Dict[str, Any], send_queue: Queue, widgets: Dict[str, AnyWidget]) -> None:
+def _handle_widget_message(message: Dict[str, Any], send_channel: CommunicationChannel, widgets: Dict[str, AnyWidget]) -> None:
     """Handle incoming widget messages and update states"""
     widget_id = message.get('widget_id')
     property_name = message.get('property')
@@ -167,19 +162,19 @@ def _handle_widget_message(message: Dict[str, Any], send_queue: Queue, widgets: 
         setattr(widget, property_name, new_value)
 
         # Send update confirmation back to main process
-        send_queue.put({
+        send_channel.send({
             'type': 'widget_update',
             'widget_id': widget_id,
             'property': property_name,
             'value': new_value
-        }, timeout=1.0)  # Add timeout
+        })  # Add timeout
         
     except Exception as e:
         logger.error(f"Failed to handle widget message: {e}")
-        send_queue.put({
+        send_channel.send({
             'type': 'error',
             'error_type': type(e).__name__,
             'message': str(e),
             'traceback': ""#traceback.format_exc()
-        }, timeout=1.0)
+        })
 
