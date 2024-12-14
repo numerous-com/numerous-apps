@@ -25,6 +25,7 @@ dev = [
     "anywidget[dev]",
     "python-dotenv",
     "numerous-widgets",
+    "numpy",
     "pytest",
     "ruff==0.6.4",
     "mypy==1.11.2",
