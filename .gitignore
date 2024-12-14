@@ -17,3 +17,4 @@ node_modules
 .env.local
 *.ruff_cache
 *.mypy_cache
+test_apps

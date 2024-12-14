@@ -37,7 +37,7 @@ def run_app():
         "map_widget": map_widget(),
         "chart": chart()
     }
-    c
+    
 
 app = create_app(template="index.html.j2", dev=True, app_generator=run_app)
 

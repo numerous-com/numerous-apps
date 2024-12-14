@@ -3,3 +3,4 @@ global-include py.typed
 include src/numerous/apps/js/*
 include src/numerous/apps/static/*
 include src/numerous/apps/templates/*
+include src/numerous/apps/bootstrap_app/*
