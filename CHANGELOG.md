@@ -2,6 +2,13 @@
 
 
 
+## v0.0.7 (2024-12-15)
+
+### Fix
+
+* fix(docs): Improve writing in readme ([`d0c7102`](https://github.com/numerous-com/numerous-apps/commit/d0c7102f4d035f4d05dbc7a489fd50b874b978bd))
+
+
 ## v0.0.6 (2024-12-15)
 
 ### Fix
