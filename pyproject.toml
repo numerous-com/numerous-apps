@@ -14,7 +14,8 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "jinja2",
-    "anywidget"
+    "anywidget",
+    "numpy"
 ]
 
 readme = "docs/README.md"

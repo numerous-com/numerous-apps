@@ -5,8 +5,7 @@ nav:
   - Our GitHub Page: https://github.com/numerous-com/numerous-apps
   - Our PyPI Page: https://pypi.org/project/numerous-apps/
   - Platform Docs: https://numerous.com/docs
-  - API Reference:
-    - Apps: apps.md
+
 
 theme: readthedocs
 plugins:
