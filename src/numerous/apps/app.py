@@ -66,64 +66,14 @@ def wrap_html(key: str) -> str:
         
 @_app.get("/")
 async def home(request: Request) -> Response:
-    # Check for existing session
-    existing_session_id = request.cookies.get("session_id")
     
-    # If session exists and is valid, use it
-    if existing_session_id and existing_session_id in _app.state.config.sessions:
-        logger.info(f"Using existing session {existing_session_id}")
-        session_id = existing_session_id
-    else:
-        # Create new session if none exists or invalid
-        logger.info(f"Creating new session")
-        session_id = str(uuid.uuid4())
-
-    try:
-        _session = _get_session(
-            _app.state.config.allow_threaded, 
-            session_id, 
-            _app.state.config.base_dir, 
-            _app.state.config.module_path, 
-            _app.state.config.template, 
-            _app.state.config.sessions, 
-            load_config=True
-        )
-
-        if _session["config"].get("type") == "error":
-            if _app.state.config.dev:
-                response = HTMLResponse(content=templates.get_template("app_process_error.html.j2").render({    
-                    "error_title": f"Error in App Process: {_session['config']['error_type']}",
-                    "error_message": _session['config']['message'],
-                    "traceback": _session['config']['traceback']
-                }), status_code=500)
-            else:
-                response = HTMLResponse(content=templates.get_template("error.html.j2").render({    
-                    "error_title": "Internal Error",
-                    "error_message": "An internal error occurred while initializing the session."
-                }), status_code=500)
-            return response
-    
-        app_definition = _session["config"]
-    except Exception as e:
-        if _app.state.config.dev:
-            response = HTMLResponse(content=templates.get_template("app_process_error.html.j2").render({    
-                "error_title": "Error in App Process",
-                "error_message": str(e),
-                "traceback": traceback.format_exc()
-            }), status_code=500)
-        else:
-            response = HTMLResponse(content=templates.get_template("error.html.j2").render({    
-                "error_title": "Internal Error",
-                "error_message": "An internal error occurred while initializing the session."
-            }), status_code=500)
-        return response
     
 
-    template = app_definition["template"]
+    template = _app.state.config.template
     template_name = _get_template(template, _app.state.config.internal_templates)
 
     # Create the template context with widget divs
-    template_widgets = {key: wrap_html(key) for key in app_definition["widgets"]}
+    template_widgets = {key: wrap_html(key) for key in _app.widgets.keys()}
     
     try:
         # Get template source and find undefined variables
@@ -165,7 +115,7 @@ async def home(request: Request) -> Response:
     
     # Check for missing widgets
     missing_widgets = []
-    for widget_id in app_definition["widgets"]:
+    for widget_id in _app.widgets.keys():
         if f'id="{widget_id}"' not in template_content:
             missing_widgets.append(widget_id)
     
@@ -185,23 +135,25 @@ async def home(request: Request) -> Response:
     )
     
     response = HTMLResponse(content=modified_html)
-    response.set_cookie(key="session_id", value=session_id)
     
     return response
 
 @_app.get("/api/widgets")
-async def get_widgets(request: Request) -> Dict[str, WidgetConfig]:
+async def get_widgets(request: Request) -> Dict[str, Any]:
     try:    
-        session_id = request.cookies.get("session_id")
-        if session_id is None:
-            return {}
+        session_id = request.query_params.get("session_id")
+        if session_id == "undefined" or session_id == "null" or session_id is None:
+            session_id = str(uuid.uuid4())
+        logger.info(f"Session ID: {session_id}")
+        
         _session = _get_session(_app.state.config.allow_threaded, session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions, load_config=True)
 
         app_definition = _session["config"]
         widget_configs = app_definition.get("widget_configs", {})
 
         
-        return widget_configs
+        return {"session_id": session_id, "widgets": widget_configs}
+    
     except Exception as e:
         raise
 
@@ -292,14 +244,14 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
             del _app.state.config.connections[session_id][client_id]
             
             # If this was the last connection for this session, clean up the session
-            if not _app.state.config.connections[session_id]:
-                del _app.state.config.connections[session_id]
-                if session_id in _app.state.config.sessions:
-                    logger.info(f"Removing session {session_id}. Sessions remaining: {len(_app.state.config.sessions) - 1}")
-                    _app.state.config.sessions[session_id]["execution_manager"].request_stop()
-                    _app.state.config.sessions[session_id]["execution_manager"].stop()
-                    _app.state.config.sessions[session_id]["execution_manager"].join()
-                    del _app.state.config.sessions[session_id]
+            #if not _app.state.config.connections[session_id]:
+            #    del _app.state.config.connections[session_id]
+            #    if session_id in _app.state.config.sessions:
+            #        logger.info(f"Removing session {session_id}. Sessions remaining: {len(_app.state.config.sessions) - 1}")
+            #        _app.state.config.sessions[session_id]["execution_manager"].request_stop()
+            #        _app.state.config.sessions[session_id]["execution_manager"].stop()
+            #        _app.state.config.sessions[session_id]["execution_manager"].join()
+            #        del _app.state.config.sessions[session_id]
 
 @_app.get("/numerous.js")
 async def serve_main_js() -> Response:

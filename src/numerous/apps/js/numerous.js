@@ -122,21 +122,29 @@ async function loadWidget(moduleSource) {
         return null;
     }
 }
-
+var wsManager;
 // Function to fetch widget configurations from the server
 async function fetchWidgetConfigs() {
     try {
         console.log("Fetching widget configs");
-        const response = await fetch('/api/widgets');
+
+        let sessionId = sessionStorage.getItem('session_id');
+        const response = await fetch(`/api/widgets?session_id=${sessionId}`);
+
         const data = await response.json();
+        console.log("Data:", data);
         
+        sessionStorage.setItem('session_id', data.session_id);
+        sessionId = data.session_id;
+
+        wsManager = new WebSocketManager(sessionId);
         // Set log level if provided in the response
         if (data.logLevel !== undefined) {
             currentLogLevel = LOG_LEVELS[data.logLevel] ?? LOG_LEVELS.INFO;
             log(LOG_LEVELS.INFO, `Log level set to: ${data.logLevel}`);
         }
         
-        return data.widgets || data; // Return widgets data
+        return data.widgets; 
     } catch (error) {
         log(LOG_LEVELS.ERROR, 'Failed to fetch widget configs:', error);
         return {};
@@ -220,11 +228,11 @@ document.addEventListener('DOMContentLoaded', initializeWidgets);
 
 // Add WebSocket connection management
 class WebSocketManager {
-    constructor() {
+    constructor(sessionId) {
         this.clientId = Math.random().toString(36).substr(2, 9);
-        this.sessionId = document.cookie.split('; ')
-            .find(row => row.startsWith('session_id='))
-            ?.split('=')[1];
+        this.sessionId = sessionId;
+        
+            
         log(LOG_LEVELS.INFO, `[WebSocketManager] Created with clientId ${this.clientId} and sessionId ${this.sessionId}`);
         this.connect();
         this.widgetModels = new Map();
@@ -302,4 +310,3 @@ class WebSocketManager {
     }
 }
 
-const wsManager = new WebSocketManager();
