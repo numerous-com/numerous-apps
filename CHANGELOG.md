@@ -2,6 +2,24 @@
 
 
 
+## v0.0.6 (2024-12-15)
+
+### Fix
+
+* fix(apps): First working version.
+
+Update project configuration and documentation
+
+- Added &#39;build&#39; to .gitignore to exclude build artifacts.
+- Removed the unused &#39;apps.md&#39; documentation file.
+- Updated &#39;mkdocs.yml&#39; to remove the API Reference section.
+- Added &#39;numpy&#39; to the dependencies in &#39;pyproject.toml&#39;.
+- Enhanced the &#39;README.md&#39; with a clearer description of the framework and its features, including a new section on getting started and app structure.
+- Changed the Uvicorn host in &#39;app.py&#39; to &#39;127.0.0.1&#39; for better local development compatibility.
+
+These changes improve project organization, documentation clarity, and dependency management. ([`1ea4411`](https://github.com/numerous-com/numerous-apps/commit/1ea4411bc9da34723c30594f9aef075b32575052))
+
+
 ## v0.0.5 (2024-12-14)
 
 ### Fix
