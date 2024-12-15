@@ -2,6 +2,20 @@
 
 
 
+## v0.0.9 (2024-12-15)
+
+### Fix
+
+* fix(apps): Enhance widget state management and threading behavior
+
+- Updated ThreadedExecutionManager to run threads as daemon threads, ensuring they terminate when the main program exits.
+- Added functionality in _execution.py to handle &#39;get_widget_states&#39; messages, allowing the server to send current widget states to clients.
+- Modified websocket_endpoint in app.py to conditionally broadcast messages based on client ID, improving message handling.
+- Enhanced numerous.js to request widget states upon WebSocket connection establishment, ensuring clients receive the latest widget information.
+
+These changes improve the responsiveness and reliability of widget state communication in the application. ([`ef8bae6`](https://github.com/numerous-com/numerous-apps/commit/ef8bae67556494e1be82fa72ad1f476f2b281f60))
+
+
 ## v0.0.8 (2024-12-15)
 
 ### Fix
