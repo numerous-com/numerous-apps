@@ -66,9 +66,28 @@ def wrap_html(key: str) -> str:
         
 @_app.get("/")
 async def home(request: Request) -> Response:
-    session_id = str(uuid.uuid4())
+    # Check for existing session
+    existing_session_id = request.cookies.get("session_id")
+    
+    # If session exists and is valid, use it
+    if existing_session_id and existing_session_id in _app.state.config.sessions:
+        logger.info(f"Using existing session {existing_session_id}")
+        session_id = existing_session_id
+    else:
+        # Create new session if none exists or invalid
+        logger.info(f"Creating new session")
+        session_id = str(uuid.uuid4())
+
     try:
-        _session = _get_session(_app.state.config.allow_threaded, session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions)
+        _session = _get_session(
+            _app.state.config.allow_threaded, 
+            session_id, 
+            _app.state.config.base_dir, 
+            _app.state.config.module_path, 
+            _app.state.config.template, 
+            _app.state.config.sessions, 
+            load_config=True
+        )
 
         if _session["config"].get("type") == "error":
             if _app.state.config.dev:
@@ -176,7 +195,7 @@ async def get_widgets(request: Request) -> Dict[str, WidgetConfig]:
         session_id = request.cookies.get("session_id")
         if session_id is None:
             return {}
-        _session = _get_session(_app.state.config.allow_threaded, session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions)
+        _session = _get_session(_app.state.config.allow_threaded, session_id, _app.state.config.base_dir, _app.state.config.module_path, _app.state.config.template, _app.state.config.sessions, load_config=True)
 
         app_definition = _session["config"]
         widget_configs = app_definition.get("widget_configs", {})
@@ -184,7 +203,7 @@ async def get_widgets(request: Request) -> Dict[str, WidgetConfig]:
         
         return widget_configs
     except Exception as e:
-        raise ValueError("Error getting widget configs")
+        raise
 
 @_app.websocket("/ws/{client_id}/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: str) -> None:

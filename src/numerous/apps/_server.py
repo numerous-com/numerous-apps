@@ -29,7 +29,7 @@ class SessionData(TypedDict):
     process: MultiProcessExecutionManager
 
 
-def _get_session(allow_threaded: bool, session_id: str, base_dir: str, module_path: str, template: str, sessions: Dict[str, SessionData]) -> SessionData:
+def _get_session(allow_threaded: bool, session_id: str, base_dir: str, module_path: str, template: str, sessions: Dict[str, SessionData], load_config: bool = False) -> SessionData:
         # Generate a session ID if one doesn't exist
         
 
@@ -53,9 +53,19 @@ def _get_session(allow_threaded: bool, session_id: str, base_dir: str, module_pa
         sessions[session_id] = {
             "execution_manager": execution_manager,
             "config": {}
-        }
-
+        } 
         _session = sessions[session_id]
+
+    
+    elif load_config:
+        _session = sessions[session_id]
+        _session["execution_manager"].communication_manager.to_app_instance.send({
+            "type": "get_state"
+        })
+    
+    
+    
+    if load_config:
 
         # Get the app definition
         app_definition = _session["execution_manager"].communication_manager.from_app_instance.receive(timeout=3)
@@ -70,8 +80,7 @@ def _get_session(allow_threaded: bool, session_id: str, base_dir: str, module_pa
         elif app_definition.get("type") != "error":
             raise AppInitError("Invalid message type. Expected 'init-config'.")
         sessions[session_id]["config"] = app_definition
-    else:
-        _session = sessions[session_id]
+    _session = sessions[session_id]
 
     return _session
     

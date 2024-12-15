@@ -6,7 +6,7 @@ const LOG_LEVELS = {
     ERROR: 3,
     NONE: 4
 };
-let currentLogLevel = LOG_LEVELS.INFO; // Default log level
+let currentLogLevel = LOG_LEVELS.DEBUG; // Default log level
 
 // Add this logging utility function
 function log(level, ...args) {
@@ -34,18 +34,17 @@ class WidgetModel {
         this.widgetId = widgetId;
         this.data = {};
         this._callbacks = {};
-        this._suppressSync = false;
         log(LOG_LEVELS.DEBUG, `[WidgetModel] Created for widget ${widgetId}`);
     }
     
-    set(key, value) {
+    set(key, value, suppressSync = false) {
         log(LOG_LEVELS.DEBUG, `[WidgetModel] Setting ${key}=${value} for widget ${this.widgetId}`);
         this.data[key] = value;
-        log(LOG_LEVELS.DEBUG, `[WidgetModel] Triggering change:${key} event`);
+
         this.trigger('change:' + key, value);
         
         // Sync with server if not suppressed
-        if (!this._suppressSync) {
+        if (!suppressSync && !this._suppressSync) {
             log(LOG_LEVELS.DEBUG, `[WidgetModel] Sending update to server`);
             wsManager.sendUpdate(this.widgetId, key, value);
         }
@@ -57,6 +56,11 @@ class WidgetModel {
     
     save_changes() {
         log('Saving changes:', this.data);
+        for (const [key, value] of Object.entries(this.data)) {
+            
+            //console.log(`[WidgetModel] Saving change: ${key}=${value}`);
+            //wsManager.sendUpdate(this.widgetId, key, value);
+        }
     }
 
     on(eventName, callback) {
@@ -122,6 +126,7 @@ async function loadWidget(moduleSource) {
 // Function to fetch widget configurations from the server
 async function fetchWidgetConfigs() {
     try {
+        console.log("Fetching widget configs");
         const response = await fetch('/api/widgets');
         const data = await response.json();
         
@@ -140,6 +145,7 @@ async function fetchWidgetConfigs() {
 
 // Updated initialize widgets function to create individual models
 async function initializeWidgets() {
+    console.log("Initializing widgets");
     const widgetConfigs = await fetchWidgetConfigs();
     
     for (const [widgetId, config] of Object.entries(widgetConfigs)) {
@@ -151,9 +157,9 @@ async function initializeWidgets() {
 
         let element;
         // Add debug logging for Plotly detection
-        log(LOG_LEVELS.DEBUG, `[Widget ${widgetId}] Module URL:`, config.moduleUrl);
+        // log(LOG_LEVELS.DEBUG, `[Widget ${widgetId}] Module URL:`, config.moduleUrl);
         const isPlotlyWidget = config.moduleUrl?.toLowerCase().includes('plotly');
-        log(LOG_LEVELS.DEBUG, `[Widget ${widgetId}] Is Plotly widget:`, isPlotlyWidget);
+        // log(LOG_LEVELS.DEBUG, `[Widget ${widgetId}] Is Plotly widget:`, isPlotlyWidget);
         
         if (USE_SHADOW_DOM && !isPlotlyWidget) {
             // Use Shadow DOM for non-Plotly widgets
@@ -189,10 +195,12 @@ async function initializeWidgets() {
 
             // Initialize default values for this widget
             for (const [key, value] of Object.entries(config.defaults || {})) {
-                log(LOG_LEVELS.DEBUG, `[WidgetModel ${widgetId}] Setting default value for ${key}=${value}`);
-                widgetModel.set(key, value);
+                if (!widgetModel.get(key)) {    
+                    log(LOG_LEVELS.DEBUG, `[WidgetModel ${widgetId}] Setting default value for ${key}=${value}`);
+                    widgetModel.set(key, value, true);
+                }
             }
-            widgetModel.save_changes();
+            // widgetModel.save_changes();
             
             try {
                 // Render the widget with its own model inside the shadow DOM
@@ -251,16 +259,15 @@ class WebSocketManager {
             if (model) {
                 log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Found model for widget ${message.widget_id}`);
                 // Update the model without triggering a send back to server
-                model._suppressSync = true;
-                model.set(message.property, message.value);
-                model._suppressSync = false;
+                
+                model.set(message.property, message.value, true);
                 
                 // Trigger the general 'change' event
-                log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Triggering general change event`);
-                model.trigger('change', {
-                    property: message.property,
-                    value: message.value
-                });
+                //log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Triggering general change event`);
+                //model.trigger('change', {
+                //    property: message.property,
+                //    value: message.value
+                //});
             } else {
                 log(LOG_LEVELS.WARN, `[WebSocketManager ${this.clientId}] No model found for widget ${message.widget_id}`);
             }

@@ -136,12 +136,23 @@ def _execute(communication_manager: CommunicationManager, session_id: str, widge
         try:
             # Block until a message is available, with a timeout
             message = communication_manager.to_app_instance.receive(timeout=0.1)
-            _handle_widget_message(message, communication_manager.from_app_instance, widgets=widgets)
+
+            if message.get('type') == 'get_state':
+                logger.info(f"[App] Sending initial config to main process")
+                communication_manager.from_app_instance.send({
+                    'type': 'init-config',
+                    'widgets': list(widgets.keys()),
+                    'widget_configs': _transform_widgets(widgets),
+                    'template': template
+                })
+            else:
+                _handle_widget_message(message, communication_manager.from_app_instance, widgets=widgets)
         except Empty:
             # No message available, continue waiting
             continue
 
 def _handle_widget_message(message: Dict[str, Any], send_channel: CommunicationChannel, widgets: Dict[str, AnyWidget]) -> None:
+    
     """Handle incoming widget messages and update states"""
     widget_id = message.get('widget_id')
     property_name = message.get('property')
@@ -168,7 +179,7 @@ def _handle_widget_message(message: Dict[str, Any], send_channel: CommunicationC
             'property': property_name,
             'value': new_value
         })  # Add timeout
-        
+    
     except Exception as e:
         logger.error(f"Failed to handle widget message: {e}")
         send_channel.send({

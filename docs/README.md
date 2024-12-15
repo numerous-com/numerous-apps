@@ -6,6 +6,15 @@ A new Python framework in development, aiming to provide a powerful yet simple a
 
 This framework is for teams who want to build fantastic apps with a modular approach and a powerful Python backend. It is for apps exposing functionality built using Python requiring a reactive UI tightly integrated with the backend.
 
+If you are:
+
+- Using standard development tools and languages.
+- Seeking to have full control over the layout, components and styling for your apps.
+- OK with a bit of boilerplate to keep your code clean and organized.
+- Creating a library of your own AnyWidgets that you can use in other Python app frameworks or React apps.
+
+This framework is for you.
+
 Our framework emphasizes modularity, allowing for easy separation of concerns. While we acknowledge that the boilerplate introduced to separate business logic from presentation is a trade-off, we strive to make it as easy as possible to use.
 
 ---
