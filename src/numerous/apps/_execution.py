@@ -145,6 +145,18 @@ def _execute(communication_manager: CommunicationManager, session_id: str, widge
                     'widget_configs': _transform_widgets(widgets),
                     'template': template
                 })
+            elif message.get('type') == 'get_widget_states':
+                logger.info(f"[App] Sending widget states to client {message.get('client_id')}")
+                for widget_id, widget in widgets.items():
+                    for trait in transformed_widgets[widget_id]['keys']:
+                        communication_manager.from_app_instance.send({
+                            'type': 'widget_update',
+                            'widget_id': widget_id,
+                            'property': trait,
+                            'value': getattr(widget, trait),
+                            'client_id': message.get('client_id')
+                        })
+                
             else:
                 _handle_widget_message(message, communication_manager.from_app_instance, widgets=widgets)
         except Empty:

@@ -140,7 +140,7 @@ class ThreadedExecutionManager(ExecutionManager):
     def start(self, *args, **kwargs):
         if self.thread is not None:
             raise RuntimeError("Thread already running")
-        self.thread = Thread(target=self.target, args=args, kwargs=kwargs)
+        self.thread = Thread(target=self.target, args=args, kwargs=kwargs, daemon=True)
         self.thread.start()
     
     def stop(self):

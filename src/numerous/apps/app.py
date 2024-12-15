@@ -21,7 +21,7 @@ from anywidget import AnyWidget
 import inspect
 from ._builtins import ParentVisibility
 from ._server import _load_main_js, NumerousApp
-from ._execution import WidgetConfig
+from ._execution import NumpyJSONEncoder
 
 class AppProcessError(Exception):
     pass
@@ -206,8 +206,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
                             }
                             for other_id, conn in _app.state.config.connections[session_id].items():
                                 try:
-                                    logger.debug(f"Broadcasting to client {other_id}: {str(update_message)[:100]}")
-                                    await conn.send_text(json.dumps(update_message))
+                                    if ("client_id" in update_message and update_message["client_id"] == client_id) or ("client_id" not in update_message):
+                                        logger.debug(f"Broadcasting to client {other_id}: {str(update_message)[:100]}")
+                                        await conn.send_text(json.dumps(update_message, cls=NumpyJSONEncoder))
                                 except Exception as e:
                                     logger.debug(f"Error broadcasting to client {other_id}: {e}")
                                     raise  # Re-raise to trigger cleanup
@@ -242,6 +243,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, session_id: s
         if session_id in _app.state.config.connections and client_id in _app.state.config.connections[session_id]:
             logger.info(f"Client {client_id} disconnected")
             del _app.state.config.connections[session_id][client_id]
+
             
             # If this was the last connection for this session, clean up the session
             #if not _app.state.config.connections[session_id]:

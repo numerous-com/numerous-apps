@@ -283,6 +283,7 @@ class WebSocketManager {
 
         this.ws.onopen = () => {
             log(LOG_LEVELS.INFO, `[WebSocketManager] WebSocket connection established`);
+            this.ws.send(JSON.stringify({type: 'get_widget_states', client_id: this.clientId}));
         };
 
         this.ws.onclose = () => {
