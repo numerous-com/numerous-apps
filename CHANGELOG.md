@@ -2,6 +2,20 @@
 
 
 
+## v0.0.8 (2024-12-15)
+
+### Fix
+
+* fix(apps): Simplify session handling and improve widget configuration retrieval
+
+- Removed redundant session validation logic in app.py, streamlining the session creation process.
+- Updated the home endpoint to directly use the application configuration for template rendering.
+- Enhanced the get_widgets API to return session ID alongside widget configurations, improving client-side session management.
+- Modified numerous.js to fetch widget configurations using the session ID from session storage, ensuring consistent session handling across requests.
+
+These changes enhance the clarity and efficiency of session management and widget communication in the application. ([`aab16ac`](https://github.com/numerous-com/numerous-apps/commit/aab16acb469bced0e7589396c62e55c8525e8266))
+
+
 ## v0.0.7 (2024-12-15)
 
 ### Fix
