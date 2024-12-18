@@ -27,7 +27,7 @@ Our framework emphasizes modularity, allowing for easy separation of concerns. W
 - **Lightweight Core:** Built atop FastAPI, Uvicorn, Jinja2, and AnyWidget to keep the core lightweight and simple.
 
 ### 🔧 **Modern Architecture**
-- **Component-Based:** Leverage [AnyWidgets](https://anywidgets.dev/) for reusable, framework-agnostic components.
+- **Component-Based:** Leverage [AnyWidget](https://anywidget.dev/) for reusable, framework-agnostic components.
 - **Clear Separation:** Use Python for logic, CSS for styling, and Jinja2 for templates.
 - **Process Isolation:** Each session runs independently, enhancing stability and scalability.
 
