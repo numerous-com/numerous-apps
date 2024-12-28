@@ -1,6 +1,2 @@
-import pytest
-
-
-def test_mock():
+def test_mock() -> None:
     assert True
-

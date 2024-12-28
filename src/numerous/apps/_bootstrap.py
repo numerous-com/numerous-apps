@@ -1,66 +1,73 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
+import logging
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+
+# Set up basic logging configuration
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+
 def copy_template(destination_path: Path) -> None:
-    """
-    Copy template directory to destination
-    """
+    """Copy template directory to destination."""
     if destination_path.exists():
-            print("Skipping copy...")
-            return
+        logging.info("Skipping copy...")
+        return
 
     try:
         template_path = Path(__file__).parent / "bootstrap_app"
         shutil.copytree(template_path, destination_path)
-        print(f"Created new project at: {destination_path}")
-    except Exception as e:
-        print(f"Error copying template: {e}")
+        logging.info(f"Created new project at: {destination_path}")
+    except Exception:
+        logging.exception("Error copying template.")
         sys.exit(1)
+
 
 def install_requirements(project_path: Path) -> None:
-    """
-    Install requirements from requirements.txt if it exists
-    """
+    """Install requirements from requirements.txt if it exists."""
     requirements_file = project_path / "requirements.txt"
-    
+
     if not requirements_file.exists():
-        print("No requirements.txt found, skipping dependency installation")
+        logging.info("No requirements.txt found, skipping dependency installation")
         return
 
-    print("Installing dependencies from requirements.txt...")
+    logging.info("Installing dependencies from requirements.txt...")
     try:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)], check=True)
-        print("Dependencies installed successfully")
-    except subprocess.CalledProcessError as e:
-        print(f"Error installing dependencies: {e}")
+        subprocess.run(  # noqa: S603
+            [sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
+            check=True,
+        )
+        logging.info("Dependencies installed successfully")
+    except subprocess.CalledProcessError:
+        logging.exception("Error installing dependencies.")
         sys.exit(1)
 
-def run_app(project_path: Path) -> None:
-    """
-    Run the app
-    """
-    subprocess.run([sys.executable, "app.py"], cwd=project_path)
 
-def main():
-    parser = argparse.ArgumentParser(description="Bootstrap a new app project from our template")
+def run_app(project_path: Path) -> None:
+    """Run the app."""
+    subprocess.run(  # noqa: S603
+        [sys.executable, "app.py"], cwd=project_path, check=False
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Bootstrap a new app project from our template"
+    )
     parser.add_argument("project_name", help="Name of the new project")
-    
+
     parser.add_argument(
-        "--skip-deps",
-        action="store_true",
-        help="Skip installing dependencies"
+        "--skip-deps", action="store_true", help="Skip installing dependencies"
     )
 
     parser.add_argument(
-        "--run-skip",
-        action="store_true",
-        help="Skip running the app after creation"
+        "--run-skip", action="store_true", help="Skip running the app after creation"
     )
 
     args = parser.parse_args()
@@ -76,10 +83,9 @@ def main():
     if not args.skip_deps:
         install_requirements(project_path)
 
-    print(f"\nProject '{args.project_name}' has been created successfully!")
-
     if not args.run_skip:
         run_app(project_path)
+
 
 if __name__ == "__main__":
     main()

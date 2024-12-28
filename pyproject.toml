@@ -20,6 +20,11 @@ dependencies = [
 
 readme = "docs/README.md"
 license = {text = "MIT"}  # Adjust license as needed
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers"
+]
 
 [project.optional-dependencies]
 dev = [
@@ -36,6 +41,15 @@ dev = [
     "mkdocstrings==0.26.2",
     "mkdocstrings-python==1.12.2",
     "mkdocs_snippet_plugin==1.0.2",
+    "pre-commit",
+    "black",
+    "mkdocs-material==9.5.46",
+    "mkdocs-gen-files==0.5.0",
+    "mkdocs-section-index==0.3.9",
+    "mkdocs-literate-nav==0.6.1",
+    "marimo",
+    "panel",
+    "pytest-cov==4.1.0"
 ]
 
 [tool.poetry.dependencies]
@@ -76,3 +90,70 @@ packages = ["numerous.apps"]
 
 [project.scripts]
 numerous-bootstrap = "numerous.apps._bootstrap:main"
+
+[tool.ruff]
+src = ["src"]
+exclude = ["examples", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "ANN101",
+    "D101",
+    "D103",
+    "D107",
+    "D203",
+    "D211",
+    "D212",
+    "FA100",
+    "FA102",
+    "ISC001",
+    "COM812",
+    "FBT001",
+    "FBT002",
+    "PLR0913",
+    "G004",
+    "EM101",
+    "TRY003",
+    "DTZ005",
+    "EM102",
+    "PLC0414",
+]
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+
+[tool.ruff.lint.extend-per-file-ignores]
+"tests/**" = ["INP001", "S101", "D100", "D103"]
+
+[tool.mypy]
+ignore_missing_imports = true
+exclude = ["examples"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=numerous.apps --cov-report=term-missing --cov-report=html"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["numerous.apps"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+]
+ignore_errors = true
+omit = [
+    "tests/*",
+    "setup.py",
+]
