@@ -40,7 +40,7 @@ temperatures = [5, 6, 9, 14, 18, 22, 25, 24, 20, 15, 10, 6]  # Sample temperatur
 # Create a bar chart
 def chart() -> wi.Chart:
     return wi.Chart(
-        type="bar",
+        chart_type="bar",
         data={
             "labels": months,
             "datasets": [

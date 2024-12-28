@@ -1,15 +1,17 @@
 """Module containing the app for the bootstrap app."""
 
+from logging import getLogger
 from typing import Any
-
-from charts import chart, map_widget
 
 import numerous.widgets as wi
 from numerous.apps import create_app
 from numerous.apps._builtins import tab_visibility
 from numerous.apps._communication import Event
-from numerous.logger import logger
 
+from .charts import chart, map_widget
+
+
+logger = getLogger(__name__)
 
 # APP UI
 
