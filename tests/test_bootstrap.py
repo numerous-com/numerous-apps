@@ -95,7 +95,7 @@ def test_main_basic_flow(caplog):
         mock_copy.assert_called_once()
         mock_install.assert_called_once()
         mock_run.assert_called_once()
-        
+
 
 def test_main_with_skip_options(caplog):
     caplog.set_level(logging.INFO)

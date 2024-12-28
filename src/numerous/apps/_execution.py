@@ -4,11 +4,16 @@ from collections.abc import Callable
 from queue import Empty
 from typing import Any, TypedDict
 
-import numpy as np
 from anywidget import AnyWidget
 
 from ._communication import CommunicationChannel as CommunicationChannel
 from ._communication import QueueCommunicationManager as CommunicationManager
+from .models import (
+    ErrorMessage,
+    InitConfigMessage,
+    NumpyJSONEncoder,
+    WidgetUpdateMessage,
+)
 
 
 ignored_traits = [
@@ -40,28 +45,6 @@ class WidgetConfig(TypedDict):
     defaults: dict[str, Any]
     keys: list[str]
     css: str | None
-
-
-class NumpyJSONEncoder(json.JSONEncoder):
-    def default(
-        self,
-        obj: np.ndarray | np.integer | np.floating | np.bool_ | dict[str, Any],
-    ) -> list[Any] | int | float | bool | dict[str, Any]:
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()  # type: ignore[no-any-return]
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.bool_):
-            return bool(obj)
-        if isinstance(obj, dict) and "css" in obj:
-            obj_copy = obj.copy()
-            max_css_length = 100
-            if len(obj_copy.get("css", "")) > max_css_length:
-                obj_copy["css"] = "<CSS content truncated>"
-            return obj_copy
-        return super().default(obj)  # type: ignore[no-any-return]
 
 
 def _transform_widgets(
@@ -141,12 +124,12 @@ def _execute(
 
     # Send initial app configuration
     communication_manager.from_app_instance.send(
-        {
-            "type": "init-config",
-            "widgets": list(transformed_widgets.keys()),
-            "widget_configs": transformed_widgets,
-            "template": template,
-        }
+        InitConfigMessage(
+            type="init-config",
+            widgets=list(transformed_widgets.keys()),
+            widget_configs=transformed_widgets,
+            template=template,
+        ).model_dump()
     )
 
     # Listen for messages from the main process
@@ -158,12 +141,12 @@ def _execute(
             if message.get("type") == "get_state":
                 logger.info("[App] Sending initial config to main process")
                 communication_manager.from_app_instance.send(
-                    {
-                        "type": "init-config",
-                        "widgets": list(widgets.keys()),
-                        "widget_configs": _transform_widgets(widgets),
-                        "template": template,
-                    }
+                    InitConfigMessage(
+                        type="init-config",
+                        widgets=list(widgets.keys()),
+                        widget_configs=_transform_widgets(widgets),
+                        template=template,
+                    ).model_dump()
                 )
             elif message.get("type") == "get_widget_states":
                 logger.info(
@@ -172,13 +155,13 @@ def _execute(
                 for widget_id, widget in widgets.items():
                     for trait in transformed_widgets[widget_id]["keys"]:
                         communication_manager.from_app_instance.send(
-                            {
-                                "type": "widget_update",
-                                "widget_id": widget_id,
-                                "property": trait,
-                                "value": getattr(widget, trait),
-                                "client_id": message.get("client_id"),
-                            }
+                            WidgetUpdateMessage(
+                                type="widget_update",
+                                widget_id=widget_id,
+                                property=trait,
+                                value=getattr(widget, trait),
+                                client_id=message.get("client_id"),
+                            ).model_dump()
                         )
 
             else:
@@ -223,21 +206,21 @@ def _handle_widget_message(
 
         # Send update confirmation back to main process
         send_channel.send(
-            {
-                "type": "widget_update",
-                "widget_id": widget_id,
-                "property": property_name,
-                "value": new_value,
-            }
-        )  # Add timeout
+            WidgetUpdateMessage(
+                type="widget_update",
+                widget_id=widget_id,
+                property=property_name,
+                value=new_value,
+            ).model_dump()
+        )
 
     except Exception as e:
         logger.exception("Failed to handle widget message.")
         send_channel.send(
-            {
-                "type": "error",
-                "error_type": type(e).__name__,
-                "message": str(e),
-                "traceback": "",  # traceback.format_exc()
-            }
+            ErrorMessage(
+                type="error",
+                error_type=type(e).__name__,
+                message=str(e),
+                traceback="",  # traceback.format_exc()
+            ).model_dump()
         )
