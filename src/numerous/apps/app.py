@@ -21,13 +21,18 @@ from starlette.responses import HTMLResponse
 from starlette.websockets import WebSocketDisconnect
 
 from ._builtins import ParentVisibility
-from ._execution import NumpyJSONEncoder
 from ._server import (
     NumerousApp,
     SessionData,
     _get_session,
     _get_template,
     _load_main_js,
+)
+from .models import (
+    ErrorMessage,
+    GetWidgetStatesMessage,
+    InitConfigMessage,
+    WidgetUpdateMessage,
 )
 
 
@@ -168,17 +173,15 @@ async def get_widgets(request: Request) -> dict[str, Any]:
 
 
 @_app.websocket("/ws/{client_id}/{session_id}")  # type: ignore[misc]
-async def websocket_endpoint(  # noqa: PLR0915, C901
+async def websocket_endpoint(
     websocket: WebSocket, client_id: str, session_id: str
 ) -> None:
     await websocket.accept()
-
     logger.debug(f"New WebSocket connection from client {client_id}")
 
     if session_id not in _app.state.config.connections:
         _app.state.config.connections[session_id] = {}
 
-    # Store connection in session-specific dictionary
     _app.state.config.connections[session_id][client_id] = websocket
 
     session = _get_session(
@@ -193,102 +196,84 @@ async def websocket_endpoint(  # noqa: PLR0915, C901
     async def receive_messages() -> None:
         try:
             while True:
-                try:
-                    data = await websocket.receive_text()
-                    message = json.loads(data)
-                    logger.debug(f"Received message from client {client_id}: {message}")
-                    if (
-                        session[
-                            "execution_manager"
-                        ].communication_manager.to_app_instance
-                        is not None
-                    ):
-                        session[
-                            "execution_manager"
-                        ].communication_manager.to_app_instance.send(message)
-                except WebSocketDisconnect:
-                    logger.debug(f"WebSocket disconnected for client {client_id}")
-                    raise  # Re-raise to trigger cleanup
+                await handle_receive_message(websocket, client_id, session)
         except (asyncio.CancelledError, WebSocketDisconnect):
             logger.debug(f"Receive task cancelled for client {client_id}")
-            raise  # Re-raise to trigger cleanup
-        except Exception as e:
-            logger.debug(f"Receive error for client {client_id}: {e}")
-            raise  # Re-raise to trigger cleanup
+            raise
 
-    async def send_messages() -> None:  # noqa: C901
+    async def send_messages() -> None:
         try:
             while True:
-                try:
-                    if not session[
-                        "execution_manager"
-                    ].communication_manager.from_app_instance.empty():
-                        response = session[
-                            "execution_manager"
-                        ].communication_manager.from_app_instance.receive()
-                        logger.debug(
-                            f"Sending message to client {client_id}: {response}"
-                        )
-
-                        if response.get("type") == "widget_update":
-                            logger.debug("Broadcasting widget update to other clients")
-                            update_message = {
-                                "widget_id": response["widget_id"],
-                                "property": response["property"],
-                                "value": response["value"],
-                            }
-                            for other_id, conn in _app.state.config.connections[
-                                session_id
-                            ].items():
-                                try:
-                                    if (
-                                        "client_id" in update_message
-                                        and update_message["client_id"] == client_id
-                                    ) or ("client_id" not in update_message):
-                                        logger.debug(
-                                            f"Broadcasting to client {other_id}: \
-                                                {str(update_message)[:100]}"
-                                        )
-                                        await conn.send_text(
-                                            json.dumps(
-                                                update_message, cls=NumpyJSONEncoder
-                                            )
-                                        )
-                                except Exception as e:
-                                    logger.debug(
-                                        f"Error broadcasting to client {other_id}: {e}"
-                                    )
-                                    raise  # Re-raise to trigger cleanup
-                        elif response.get("type") == "init-config":
-                            await websocket.send_text(json.dumps(response))
-                        elif response.get("type") == "error":
-                            if _app.state.config.dev:
-                                await websocket.send_text(json.dumps(response))
-                    await asyncio.sleep(0.01)
-                except WebSocketDisconnect:
-                    logger.debug(f"WebSocket disconnected for client {client_id}")
-                    raise  # Re-raise to trigger cleanup
+                await handle_send_message(websocket, client_id, session)
         except (asyncio.CancelledError, WebSocketDisconnect):
             logger.debug(f"Send task cancelled for client {client_id}")
-            raise  # Re-raise to trigger cleanup
-        except Exception as e:
-            logger.debug(f"Send error for client {client_id}: {e}")
-            raise  # Re-raise to trigger cleanup
+            raise
 
     try:
-        # Run both tasks concurrently
         await asyncio.gather(receive_messages(), send_messages())
     except (asyncio.CancelledError, WebSocketDisconnect):
         logger.debug(f"WebSocket tasks cancelled for client {client_id}")
-
     finally:
-        # Clean up connection from session-specific dictionary
-        if (
-            session_id in _app.state.config.connections
-            and client_id in _app.state.config.connections[session_id]
-        ):
-            logger.info(f"Client {client_id} disconnected")
-            del _app.state.config.connections[session_id][client_id]
+        cleanup_connection(session_id, client_id)
+
+
+async def handle_receive_message(
+    websocket: WebSocket, client_id: str, session: SessionData
+) -> None:
+    try:
+        data = await websocket.receive_text()
+        message = json.loads(data)
+        logger.debug(f"Received message from client {client_id}: {message}")
+
+        if message.get("type") == "get_widget_states":
+            msg = GetWidgetStatesMessage(**message)
+            session["execution_manager"].communication_manager.to_app_instance.send(
+                msg.model_dump()
+            )
+        else:
+            session["execution_manager"].communication_manager.to_app_instance.send(
+                message
+            )
+    except WebSocketDisconnect:
+        logger.debug(f"WebSocket disconnected for client {client_id}")
+        raise
+
+
+async def handle_send_message(
+    websocket: WebSocket, client_id: str, session: SessionData
+) -> None:
+    try:
+        if not session[
+            "execution_manager"
+        ].communication_manager.from_app_instance.empty():
+            response = session[
+                "execution_manager"
+            ].communication_manager.from_app_instance.receive()
+            logger.debug(f"Sending message to client {client_id}: {response}")
+
+            if response.get("type") == "widget_update":
+                update_message = WidgetUpdateMessage(**response)
+                await websocket.send_text(update_message.model_dump_json())
+            elif response.get("type") == "init-config":
+                init_config_message = InitConfigMessage(**response)
+                await websocket.send_text(init_config_message.model_dump_json())
+            elif response.get("type") == "error":
+                error_message = ErrorMessage(**response)
+                if _app.state.config.dev:
+                    await websocket.send_text(error_message.model_dump_json())
+        await asyncio.sleep(0.01)
+    except WebSocketDisconnect:
+        logger.debug(f"WebSocket disconnected for client {client_id}")
+        raise
+
+
+def cleanup_connection(session_id: str, client_id: str) -> None:
+    if (
+        session_id in _app.state.config.connections
+        and client_id in _app.state.config.connections[session_id]
+    ):
+        logger.info(f"Client {client_id} disconnected")
+        del _app.state.config.connections[session_id][client_id]
 
 
 @_app.get("/numerous.js")  # type: ignore[misc]

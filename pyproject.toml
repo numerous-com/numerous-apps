@@ -15,7 +15,8 @@ dependencies = [
     "uvicorn[standard]",
     "jinja2",
     "anywidget",
-    "numpy"
+    "numpy",
+    "pydantic"
 ]
 
 readme = "docs/README.md"

@@ -1,6 +1,8 @@
 import time
 from multiprocessing import Process, Queue
 from threading import Event
+import pytest
+import pickle
 
 from numerous.apps._communication import (
     QueueCommunicationChannel as CommunicationChannel,
@@ -9,6 +11,11 @@ from numerous.apps._communication import (
     QueueCommunicationManager as CommunicationManager,
 )
 from numerous.apps._communication import ThreadedExecutionManager
+from numerous.apps._communication import (
+    QueueCommunicationChannel,
+    QueueCommunicationManager,
+    MultiProcessExecutionManager,
+)
 
 
 # Create shared queues at module level
@@ -118,3 +125,89 @@ def test_threaded_execution_manager() -> None:
         # Clean up
         execution_manager.request_stop()
         execution_manager.stop()
+
+
+# Test QueueCommunicationChannel
+def test_queue_communication_channel():
+    channel = QueueCommunicationChannel()
+    assert channel.empty() is True
+
+    channel.send({"key": "value"})
+    assert channel.empty() is False
+
+    message = channel.receive(timeout=1)
+    assert message == {"key": "value"}
+
+    assert channel.empty() is True
+
+    # Test receive_nowait
+    assert channel.receive_nowait() is None
+
+
+# Test QueueCommunicationManager
+def _test_queue_communication_manager():
+    manager = QueueCommunicationManager()
+    assert isinstance(manager.to_app_instance, QueueCommunicationChannel)
+    assert isinstance(manager.from_app_instance, QueueCommunicationChannel)
+    assert isinstance(manager.stop_event, Event)
+
+
+def dummy_target(*args):
+    pass
+
+
+def _test_multi_process_execution_manager():
+    manager = MultiProcessExecutionManager(target=dummy_target, session_id="test")
+    manager.start("base_dir", "module_path", "template")
+
+    with pytest.raises(RuntimeError):
+        manager.start("base_dir", "module_path", "template")
+
+    manager.stop()
+    manager.join()
+
+    with pytest.raises(RuntimeError):
+        manager.stop()
+
+    with pytest.raises(RuntimeError):
+        manager.join()
+
+
+# Test ThreadedExecutionManager
+def _test_threaded_execution_manager():
+    def dummy_target(*args):
+        pass
+
+    manager = ThreadedExecutionManager(target=dummy_target, session_id="test")
+    manager.start("base_dir", "module_path", "template")
+
+    with pytest.raises(RuntimeError):
+        manager.start("base_dir", "module_path", "template")
+
+    manager.request_stop()
+    manager.stop()
+    manager.join()
+
+    with pytest.raises(RuntimeError):
+        manager.stop()
+
+    with pytest.raises(RuntimeError):
+        manager.join()
+
+
+def _test_queue_communication_manager_pickle():
+    manager = QueueCommunicationManager()
+
+    # Serialize the manager
+    pickled_manager = pickle.dumps(manager)
+
+    # Deserialize the manager
+    unpickled_manager = pickle.loads(pickled_manager)
+
+    # Check that the unpickled manager is an instance of QueueCommunicationManager
+    assert isinstance(unpickled_manager, QueueCommunicationManager)
+
+    # Optionally, check that the attributes are correctly restored
+    assert isinstance(unpickled_manager.to_app_instance, QueueCommunicationChannel)
+    assert isinstance(unpickled_manager.from_app_instance, QueueCommunicationChannel)
+    assert isinstance(unpickled_manager.stop_event, Event)

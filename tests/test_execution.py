@@ -12,6 +12,7 @@ from numerous.apps._execution import (
     _transform_widgets,
     create_handler,
 )
+from numerous.apps.models import WidgetUpdateMessage
 
 
 class MockWidget(AnyWidget):
@@ -188,23 +189,20 @@ def test_handle_widget_message_successful_update():
     widget = MockWidget(esm="test")
     widgets = {"test_widget": widget}
     send_channel = MockCommunicationChannel()
-    message = {
-        "widget_id": "test_widget",
-        "property": "test_trait",
-        "value": "new_value",
-    }
+    message = WidgetUpdateMessage(
+        widget_id="test_widget",
+        property="test_trait",
+        value="new_value",
+        type="widget_update",
+    ).model_dump()
 
     # Act
     _handle_widget_message(message, send_channel, widgets)
 
     # Assert
     assert widget.test_trait == "new_value"
-    assert send_channel.sent_messages[0] == {
-        "type": "widget_update",
-        "widget_id": "test_widget",
-        "property": "test_trait",
-        "value": "new_value",
-    }
+    sent_message = send_channel.sent_messages[0]
+    assert sent_message == message
 
 
 def test_handle_widget_message_invalid_widget():

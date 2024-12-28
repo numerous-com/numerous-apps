@@ -7,7 +7,7 @@ from typing import Any
 
 class CommunicationChannel(ABC):
     @abstractmethod
-    def send(self, message: Any) -> None:  # noqa: ANN401
+    def send(self, message: dict[str, Any]) -> None:
         pass
 
     @abstractmethod
@@ -19,7 +19,7 @@ class CommunicationChannel(ABC):
         pass
 
     @abstractmethod
-    def receive_nowait(self) -> Any:  # noqa: ANN401
+    def receive_nowait(self) -> dict[str, Any]:
         pass
 
 
@@ -90,7 +90,7 @@ class MultiProcessExecutionManager(ExecutionManager):
         module_path: str,
         template: str,
     ) -> None:
-        if self.process is not None:
+        if hasattr(self, "process") and self.process.is_alive():
             raise RuntimeError("Process already running")
         self.process = Process(
             target=self.target,

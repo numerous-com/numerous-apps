@@ -17,6 +17,10 @@ from ._communication import MultiProcessExecutionManager, ThreadedExecutionManag
 from ._communication import QueueCommunicationChannel as CommunicationChannel
 from ._communication import QueueCommunicationManager as CommunicationManager
 from ._execution import _execute
+from .models import (
+    ErrorMessage,
+    GetStateMessage,
+)
 
 
 class Jinja2Templates(Environment):  # type: ignore[misc]
@@ -75,7 +79,7 @@ def _get_session(
     elif load_config:
         _session = sessions[session_id]
         _session["execution_manager"].communication_manager.to_app_instance.send(
-            {"type": "get_state"}
+            GetStateMessage(type="get_state").model_dump()
         )
 
     if load_config:
@@ -163,12 +167,12 @@ def _app_process(
                 traceback: {str(traceback.format_exc())[:100]}"
         )
         communication_manager.from_app_instance.send(
-            {
-                "type": "error",
-                "error_type": type(e).__name__,
-                "message": str(e),
-                "traceback": str(traceback.format_exc())[:100],
-            }
+            ErrorMessage(
+                type="error",
+                error_type=type(e).__name__,
+                message=str(e),
+                traceback=str(traceback.format_exc())[:100],
+            ).model_dump()
         )
     finally:
         # Clean up queues
