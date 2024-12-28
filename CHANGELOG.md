@@ -2,6 +2,13 @@
 
 
 
+## v0.0.11 (2024-12-28)
+
+### Fix
+
+* fix(apps): Fix small issue in app.py added more tests ([`063b2d8`](https://github.com/numerous-com/numerous-apps/commit/063b2d8f7c1a4f54b5381230c260d79e5175878e))
+
+
 ## v0.0.10 (2024-12-28)
 
 ### Fix
