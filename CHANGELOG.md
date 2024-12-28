@@ -2,6 +2,29 @@
 
 
 
+## v0.0.10 (2024-12-28)
+
+### Fix
+
+* fix(apps): missing httpx dev dep ([`c8f1399`](https://github.com/numerous-com/numerous-apps/commit/c8f1399d043e38ea42006b9c4e3d781e3ff3cbf1))
+
+* fix(apps): Enhance project configuration, testing and logging
+
+- Added new classifiers to pyproject.toml for better package categorization.
+- Updated .gitignore to exclude htmlcov directory.
+- Improved logging in _bootstrap.py for better visibility during template copying and dependency installation.
+- Enhanced communication management in _communication.py and _execution.py to streamline message handling and improve error reporting.
+- Refactored widget handling in app.py to ensure consistent session management and improved error handling in template rendering.
+
+These changes improve the overall configuration, logging, and communication flow within the application, enhancing maintainability and user experience. ([`c0dbc53`](https://github.com/numerous-com/numerous-apps/commit/c0dbc53fccc41d091a927067dcbf6d78f8e56632))
+
+### Unknown
+
+* Update README.md
+
+Fixed a typo in the AnyWidget URL ([`1716070`](https://github.com/numerous-com/numerous-apps/commit/1716070a942708d23d769b2ac1cb9ca210038b46))
+
+
 ## v0.0.9 (2024-12-15)
 
 ### Fix
