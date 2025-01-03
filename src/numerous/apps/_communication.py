@@ -105,14 +105,15 @@ class MultiProcessExecutionManager(ExecutionManager):
         self.process.start()
 
     def stop(self) -> None:
-        if self.process is None:
+        if not hasattr(self, "process") or self.process is None:
             raise RuntimeError("Process not running")
         self.process.terminate()
 
     def join(self) -> None:
-        if self.process is None:
+        if not hasattr(self, "process") or self.process is None:
             raise RuntimeError("Process not running")
         self.process.join()
+        del self.process
 
 
 class ThreadedExecutionManager(ExecutionManager):
@@ -135,8 +136,11 @@ class ThreadedExecutionManager(ExecutionManager):
         module_path: str,
         template: str,
     ) -> None:
-        if hasattr(self, "thread") and self.thread.is_alive():
-            raise RuntimeError("Thread already running")
+        if hasattr(self, "thread"):
+            raise RuntimeError(
+                "Thread already exists. Please join the thread before\
+                starting a new one."
+            )
         self.thread = Thread(
             target=self.target,
             args=(
@@ -151,7 +155,12 @@ class ThreadedExecutionManager(ExecutionManager):
         self.thread.start()
 
     def stop(self) -> None:
-        self.thread.join()
+        if not hasattr(self, "thread") or self.thread is None:
+            raise RuntimeError("Thread not running")
+        self.stop_event.set()
 
     def join(self) -> None:
+        if not hasattr(self, "thread") or self.thread is None:
+            raise RuntimeError("Thread not running")
         self.thread.join()
+        del self.thread
