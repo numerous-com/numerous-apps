@@ -1,10 +1,12 @@
 import logging
 import os
+import multiprocessing
 
 import pytest
 from fastapi.testclient import TestClient
 
 from numerous.apps.app import AnyWidget, create_app
+from numerous.apps._communication import MultiProcessExecutionManager
 
 
 @pytest.fixture(scope="session")
@@ -178,3 +180,86 @@ def test_websocket_error_in_dev_mode(client, test_dirs):
         # Test error handling in dev mode
         data = websocket.receive_json()
         assert isinstance(data, dict)
+
+
+def test_multiprocess_mode(test_dirs, caplog):
+    """Test that the app works in multiprocess mode."""
+    from numerous.apps.app import templates  # Import templates object
+
+    # Add the test templates directory to Jinja2's search path
+    templates.env.loader.searchpath.append(str(test_dirs / "templates"))
+    
+    # Enable debug logging
+    caplog.set_level(logging.DEBUG)
+    
+    widget = AnyWidget()
+    widget.module = "test-widget"
+    widget.html = "<div>Test Widget</div>"
+    widget.attributes = {"value": "test"}
+    
+    app = create_app(
+        template="base.html.j2",
+        dev=True,
+        widgets={"test_widget": widget},
+        app_generator=None,  # Explicitly set to None to force multiprocess mode
+    )
+    
+    client = TestClient(app)
+
+    try:
+        # First verify we can access the home page
+        response = client.get("/")
+        assert response.status_code == 200
+        
+        # Now test the widgets endpoint
+        response = client.get("/api/widgets")
+        assert response.status_code == 200
+        
+        session_id = response.json()["session_id"]
+        assert session_id in app.state.config.sessions
+        
+        # Verify the execution manager type
+        execution_manager = app.state.config.sessions[session_id]["execution_manager"]
+        assert isinstance(execution_manager, MultiProcessExecutionManager)
+        
+        # Verify the process is running
+        assert execution_manager.process.is_alive()
+
+    finally:
+        client.close()
+
+
+def test_widget_collection_from_locals(test_dirs):
+    """Test that widgets are collected from locals when not explicitly provided."""
+    # Create widgets in local scope
+    test_widget1 = AnyWidget()
+    test_widget1.module = "test-widget-1"
+    test_widget1.html = "<div>Test Widget 1</div>"
+    
+    test_widget2 = AnyWidget()
+    test_widget2.module = "test-widget-2"
+    test_widget2.html = "<div>Test Widget 2</div>"
+    
+    # Create template with both widgets
+    with open(test_dirs / "templates" / "two_widgets.html.j2", "w") as f:
+        f.write("""
+        <!DOCTYPE html>
+        <html>
+        <body>
+            {{ test_widget1 }}
+            {{ test_widget2 }}
+        </body>
+        </html>
+        """)
+    
+    # Create app without explicitly providing widgets
+    app = create_app(
+        template="two_widgets.html.j2",
+        dev=True,
+        app_generator=None,
+    )
+    
+    # Verify both widgets were collected
+    assert "test_widget1" in app.widgets
+    assert "test_widget2" in app.widgets
+    

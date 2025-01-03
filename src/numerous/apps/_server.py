@@ -86,7 +86,7 @@ def _get_session(
         # Get the app definition
         app_definition = _session[
             "execution_manager"
-        ].communication_manager.from_app_instance.receive(timeout=3)
+        ].communication_manager.from_app_instance.receive(timeout=10)
 
         # Check message type
         if app_definition.get("type") == "init-config":

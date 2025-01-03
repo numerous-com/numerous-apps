@@ -112,6 +112,7 @@ class MultiProcessExecutionManager(ExecutionManager):
                 template,
                 self.communication_manager,
             ),
+            daemon=True,
         )
         self.process.start()
 
