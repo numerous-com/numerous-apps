@@ -145,7 +145,7 @@ def test_queue_communication_channel():
 
 
 # Test QueueCommunicationManager
-def _test_queue_communication_manager():
+def test_queue_communication_manager():
     manager = QueueCommunicationManager()
     assert isinstance(manager.to_app_instance, QueueCommunicationChannel)
     assert isinstance(manager.from_app_instance, QueueCommunicationChannel)
@@ -174,7 +174,7 @@ def _test_multi_process_execution_manager():
 
 
 # Test ThreadedExecutionManager
-def _test_threaded_execution_manager():
+def test_threaded_execution_manager():
     def dummy_target(*args):
         pass
 
