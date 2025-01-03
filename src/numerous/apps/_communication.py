@@ -3,7 +3,7 @@ import multiprocessing.synchronize
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from queue import Queue
+from queue import Empty, Queue
 from typing import Any
 
 
@@ -62,7 +62,10 @@ class QueueCommunicationChannel(CommunicationChannel):
         return self.queue.empty()
 
     def receive_nowait(self) -> Any:  # noqa: ANN401
-        return None
+        try:
+            return self.queue.get_nowait()
+        except Empty:
+            return None
 
 
 class QueueCommunicationManager(CommunicationManager):
