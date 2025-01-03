@@ -182,9 +182,13 @@ def test_websocket_error_in_dev_mode(client, test_dirs):
         assert isinstance(data, dict)
 
 
+@pytest.mark.skipif(
+    os.environ.get('PYTEST_COVER', '0') == '1',
+    reason="Skip during coverage runs due to multiprocessing conflicts"
+)
 def test_multiprocess_mode(test_dirs, caplog):
     """Test that the app works in multiprocess mode."""
-    from numerous.apps.app import templates  # Import templates object
+    from numerous.apps.app import templates
 
     # Add the test templates directory to Jinja2's search path
     templates.env.loader.searchpath.append(str(test_dirs / "templates"))
