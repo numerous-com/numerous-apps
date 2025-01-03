@@ -6,7 +6,6 @@ from typing import Any
 import numerous.widgets as wi
 from numerous.apps import create_app
 from numerous.apps._builtins import tab_visibility
-from numerous.apps._communication import Event
 
 from .charts import chart, map_widget
 
@@ -25,7 +24,7 @@ def run_app() -> dict[str, Any]:
 
     counter2 = wi.Number(default=0, label="Counter2:", fit_to_content=True)
 
-    def on_click(event: Event) -> None:  # noqa: ARG001
+    def on_click(event: dict[str, Any]) -> None:  # noqa: ARG001
         counter.value += 1
 
     increment_counter = wi.Button(label="Increment Counter", on_click=on_click)
@@ -34,7 +33,7 @@ def run_app() -> dict[str, Any]:
         ["1", "2", "3"], label="Select Value", fit_to_content=True
     )
 
-    def on_selection_change(event: Event) -> None:  # noqa: ARG001
+    def on_selection_change(event: dict[str, Any]) -> None:  # noqa: ARG001
         logger.debug(f"Selected value: {selection_widget.value}")
 
     selection_widget.observe(on_selection_change, names="value")
