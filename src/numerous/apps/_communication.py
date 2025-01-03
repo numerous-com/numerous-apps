@@ -3,8 +3,15 @@ import multiprocessing.synchronize
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from contextlib import suppress
 from queue import Empty, Queue
 from typing import Any
+
+
+# Set start method to 'spawn' at the module level
+if hasattr(multiprocessing, "set_start_method"):
+    with suppress(RuntimeError):
+        multiprocessing.set_start_method("spawn")
 
 
 class CommunicationChannel(ABC):

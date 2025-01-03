@@ -133,6 +133,7 @@ def test_queue_communication_channel():
     assert channel.empty() is True
 
     channel.send({"key": "value"})
+    time.sleep(0.1)  # Add small delay to ensure queue state is synchronized
     assert channel.empty() is False
 
     message = channel.receive(timeout=1)
