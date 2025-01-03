@@ -1,7 +1,9 @@
+import multiprocessing
+import multiprocessing.synchronize
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from multiprocessing import Process, Queue
-from threading import Event, Thread
+from queue import Queue
 from typing import Any
 
 
@@ -24,7 +26,7 @@ class CommunicationChannel(ABC):
 
 
 class CommunicationManager(ABC):
-    stop_event: Event
+    stop_event: threading.Event | multiprocessing.synchronize.Event
     from_app_instance: CommunicationChannel
     to_app_instance: CommunicationChannel
 
@@ -47,8 +49,8 @@ class ExecutionManager(ABC):
 
 
 class QueueCommunicationChannel(CommunicationChannel):
-    def __init__(self) -> None:
-        self.queue = Queue()  # type: ignore [var-annotated]
+    def __init__(self, queue: Queue) -> None:  # type: ignore [type-arg]
+        self.queue = queue
 
     def send(self, message: Any) -> None:  # noqa: ANN401
         self.queue.put(message)
@@ -64,22 +66,31 @@ class QueueCommunicationChannel(CommunicationChannel):
 
 
 class QueueCommunicationManager(CommunicationManager):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        stop_event: threading.Event | multiprocessing.synchronize.Event,
+        queue_to_app: Queue,  # type: ignore [type-arg]
+        queue_from_app: Queue,  # type: ignore [type-arg]
+    ) -> None:
         super().__init__()
-        self.to_app_instance = QueueCommunicationChannel()
-        self.from_app_instance = QueueCommunicationChannel()
-        self.stop_event = Event()
+        self.to_app_instance = QueueCommunicationChannel(queue_to_app)
+        self.from_app_instance = QueueCommunicationChannel(queue_from_app)
+        self.stop_event = stop_event
 
 
 class MultiProcessExecutionManager(ExecutionManager):
-    process: Process
+    process: multiprocessing.Process
 
     def __init__(
         self,
         target: Callable[[str, str, str, str, CommunicationManager], None],
         session_id: str,
     ) -> None:
-        self.communication_manager: CommunicationManager = QueueCommunicationManager()
+        self.communication_manager: CommunicationManager = QueueCommunicationManager(
+            stop_event=multiprocessing.Event(),
+            queue_to_app=multiprocessing.Queue(),  # type: ignore [arg-type]
+            queue_from_app=multiprocessing.Queue(),  # type: ignore [arg-type]
+        )
         self.session_id = session_id
         self.target = target
         super().__init__()
@@ -92,7 +103,7 @@ class MultiProcessExecutionManager(ExecutionManager):
     ) -> None:
         if hasattr(self, "process") and self.process.is_alive():
             raise RuntimeError("Process already running")
-        self.process = Process(
+        self.process = multiprocessing.Process(
             target=self.target,
             args=(
                 self.session_id,
@@ -117,18 +128,20 @@ class MultiProcessExecutionManager(ExecutionManager):
 
 
 class ThreadedExecutionManager(ExecutionManager):
-    thread: Thread
+    thread: threading.Thread
 
     def __init__(
         self,
         target: Callable[[str, str, str, str, CommunicationManager], None],
         session_id: str,
     ) -> None:
-        self.communication_manager: CommunicationManager = QueueCommunicationManager()
+        self.communication_manager: CommunicationManager = QueueCommunicationManager(
+            stop_event=threading.Event(),
+            queue_to_app=Queue(),
+            queue_from_app=Queue(),
+        )
         self.session_id = session_id
         self.target = target
-
-        self.stop_event = Event()
 
     def start(
         self,
@@ -141,7 +154,7 @@ class ThreadedExecutionManager(ExecutionManager):
                 "Thread already exists. Please join the thread before\
                 starting a new one."
             )
-        self.thread = Thread(
+        self.thread = threading.Thread(
             target=self.target,
             args=(
                 self.session_id,
@@ -157,7 +170,7 @@ class ThreadedExecutionManager(ExecutionManager):
     def stop(self) -> None:
         if not hasattr(self, "thread") or self.thread is None:
             raise RuntimeError("Thread not running")
-        self.stop_event.set()
+        self.communication_manager.stop_event.set()
 
     def join(self) -> None:
         if not hasattr(self, "thread") or self.thread is None:

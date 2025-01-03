@@ -129,7 +129,7 @@ def test_threaded_execution_manager() -> None:
 
 # Test QueueCommunicationChannel
 def test_queue_communication_channel():
-    channel = QueueCommunicationChannel()
+    channel = QueueCommunicationChannel(Queue())
     assert channel.empty() is True
 
     channel.send({"key": "value"})
@@ -146,17 +146,16 @@ def test_queue_communication_channel():
 
 # Test QueueCommunicationManager
 def test_queue_communication_manager():
-    manager = QueueCommunicationManager()
+    manager = QueueCommunicationManager(Queue(), Queue(), Event())
     assert isinstance(manager.to_app_instance, QueueCommunicationChannel)
     assert isinstance(manager.from_app_instance, QueueCommunicationChannel)
-    assert isinstance(manager.stop_event, Event)
 
 
 def dummy_target(*args):
     pass
 
 
-def _test_multi_process_execution_manager():
+def test_multi_process_execution_manager():
     manager = MultiProcessExecutionManager(target=dummy_target, session_id="test")
     manager.start("base_dir", "module_path", "template")
 

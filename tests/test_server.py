@@ -3,7 +3,8 @@ from pathlib import Path
 from queue import Empty
 from typing import Any
 from unittest.mock import MagicMock, Mock, patch
-
+from threading import Event
+from queue import Queue
 import pytest
 from starlette.templating import Jinja2Templates
 
@@ -134,7 +135,7 @@ app.widgets = {}
         module_path.write_text(module_content)
 
         # Create communication manager with mocked queues
-        comm_manager = QueueCommunicationManager()
+        comm_manager = QueueCommunicationManager(Event(), Queue(), Queue())
 
         # Mock _execute to prevent actual execution
         with patch("numerous.apps._server._execute") as mock_execute:
@@ -157,7 +158,7 @@ app.widgets = {}
 
 def test_app_process_handles_missing_file() -> None:
     """Test that _app_process handles missing module file."""
-    comm_manager = QueueCommunicationManager()
+    comm_manager = QueueCommunicationManager(Event(), Queue(), Queue())
 
     # Mock the queues with MagicMock
     comm_manager.from_app_instance = MagicMock()
@@ -280,7 +281,7 @@ def test_get_session_with_threaded_execution() -> None:
 
 def test_app_process_handles_import_error() -> None:
     """Test that _app_process handles import errors correctly."""
-    comm_manager = QueueCommunicationManager()
+    comm_manager = QueueCommunicationManager(Event(), Queue(), Queue())
 
     # Mock the queues with MagicMock
     comm_manager.from_app_instance = MagicMock()
