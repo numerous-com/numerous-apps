@@ -2,6 +2,56 @@
 
 
 
+## v0.1.3 (2025-01-04)
+
+### Fix
+
+* fix(ci): Correct end-to-end test script path in release workflow
+
+- Updated the command for executing the end-to-end test script in the GitHub Actions workflow to use the correct file path, ensuring proper execution.
+- This change enhances the reliability of the CI/CD pipeline by aligning with the project&#39;s updated structure. ([`7afe396`](https://github.com/numerous-com/numerous-apps/commit/7afe396dde1a9de93b78af6d2c1e570ff03634b6))
+
+* fix(ci): Update end-to-end test script execution in release workflow
+
+- Modified the command for running the end-to-end test script in the GitHub Actions workflow to remove the redundant path specification.
+- This change streamlines the execution process and ensures compatibility with the updated project structure.
+
+These updates contribute to a more efficient CI/CD pipeline by simplifying the testing step. ([`b3a2e27`](https://github.com/numerous-com/numerous-apps/commit/b3a2e27b99486d4e5e9572b1b9be7e10785ba56b))
+
+* fix(ci): Enhance end-to-end testing in release workflow
+
+- Added a timeout of 5 minutes for the end-to-end test job to prevent long-running processes.
+- Included steps to check out the repository and set up Python 3.12 with pip caching for improved efficiency.
+- Installed development dependencies before running the end-to-end test script.
+
+These updates improve the reliability and performance of the CI/CD pipeline by ensuring a more robust testing environment. ([`756412e`](https://github.com/numerous-com/numerous-apps/commit/756412e6fbe955f75b01d44f2f628902119a3688))
+
+* fix(ci): Add end-to-end testing step to release workflow
+
+- Introduced a new job for end-to-end testing in the GitHub Actions workflow.
+- Updated the build job to depend on both the test and end-to-end test jobs, ensuring comprehensive testing before the build process.
+
+These changes enhance the CI/CD pipeline by incorporating end-to-end tests, improving the overall reliability of the release process. ([`38350a8`](https://github.com/numerous-com/numerous-apps/commit/38350a8b9a7dd4404eedcbf39f0e53b2bc398f28))
+
+* fix(config): Update pre-commit configuration and coverage settings
+
+- Changed `always_run` in `.pre-commit-config.yaml` to `true` to ensure tests are always executed.
+- Updated `branch` setting in `pyproject.toml` under the coverage configuration from `true` to `false`, disabling branch coverage.
+
+These adjustments enhance the testing process and coverage reporting for the project. ([`585b3f1`](https://github.com/numerous-com/numerous-apps/commit/585b3f142315f98b2c88f7bc72cf2782d1a2df6b))
+
+* fix(app): Restructure Numerous app components and update imports
+
+- Removed deprecated modules and files, including `_bootstrap.py`, `_builtins.py`, `_communication.py`, `_execution.py`, `_server.py`, and `app.py`, to streamline the codebase.
+- Updated import paths in various files to reflect the new structure, ensuring proper functionality.
+- Adjusted `pyproject.toml` to remove specific version pinning for `numerous-widgets` and added package data for `numerous.apps`.
+- Enhanced the `bootstrap_app` module by correcting import statements and ensuring consistent package structure.
+
+These changes improve the organization of the Numerous app, making it more maintainable and easier to navigate. ([`b33b0f7`](https://github.com/numerous-com/numerous-apps/commit/b33b0f7037bcc14827731d8214d2ee3a68a7be7a))
+
+* fix(tests): Refactor communication manager tests for improved clarity and synchronization ([`910751e`](https://github.com/numerous-com/numerous-apps/commit/910751eba793eb3d22521339a1fb3312aed51f26))
+
+
 ## v0.1.2 (2025-01-04)
 
 ### Fix
