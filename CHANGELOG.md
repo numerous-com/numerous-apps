@@ -2,6 +2,44 @@
 
 
 
+## v0.1.0 (2025-01-04)
+
+### Feature
+
+* feat(apps): Enhance communication and configuration management
+
+- Added `pydantic` as a new dependency in `pyproject.toml` for improved data validation.
+- Refactored message handling in `_communication.py` and `_execution.py` to utilize Pydantic models for structured messaging, enhancing error reporting and data integrity.
+- Updated the `send` and `receive_nowait` methods in `CommunicationChannel` to use typed dictionaries for better type safety.
+- Improved the WebSocket message handling in `app.py` by introducing dedicated functions for receiving and sending messages, streamlining the communication flow.
+- Added tests for communication channels and execution managers to ensure reliability and correctness.
+
+These changes improve the overall robustness and maintainability of the application&#39;s communication framework. ([`1f4c524`](https://github.com/numerous-com/numerous-apps/commit/1f4c5240187302fff193b0d25231d39d39657f90))
+
+### Fix
+
+* fix(communication): Set multiprocessing start method to &#39;spawn&#39; and improve test synchronization
+
+- Added a module-level setting for the multiprocessing start method to &#39;spawn&#39; to ensure compatibility across platforms.
+- Introduced a small delay in the test for the communication channel to ensure the queue state is synchronized before assertions.
+
+These changes enhance the reliability of the communication channel in a multiprocessing context and improve test stability. ([`1830ed4`](https://github.com/numerous-com/numerous-apps/commit/1830ed4ade76c51f0a25b23bab777625d78723b6))
+
+* fix(communication): Improve non-blocking queue handling in QueueCommunicationChannel
+
+- Added handling for Empty exception in receive_nowait method to prevent runtime errors when the queue is empty.
+- Updated import statement to include Empty from queue module for better error management.
+- Minor adjustments in test_app.py to skip multiprocessing tests during coverage runs.
+
+These changes enhance the robustness of the communication channel by ensuring that it gracefully handles empty queue scenarios. ([`fc249d9`](https://github.com/numerous-com/numerous-apps/commit/fc249d93311702bd3e186173b98aa5bd27d8bfa6))
+
+* fix(apps): Multiprocessing mode processes are daemons. ([`f7949a8`](https://github.com/numerous-com/numerous-apps/commit/f7949a801744c2ee43b714bc4158be495f2979c8))
+
+* fix(apps): Fixed issue with queues and events for multiprocess communication ([`f6591d8`](https://github.com/numerous-com/numerous-apps/commit/f6591d87a735be1200d289fb91ca10c7d201132f))
+
+* fix(apps): Fix logic for raising runtime error in ThreadExecutionManager ([`57ea0ca`](https://github.com/numerous-com/numerous-apps/commit/57ea0ca0507d14aa550e1e5fefd83b65a7c8ffdc))
+
+
 ## v0.0.11 (2024-12-28)
 
 ### Fix
