@@ -1,3 +1,5 @@
+"""Module for running the server."""
+
 import importlib
 import json
 import logging
@@ -13,10 +15,10 @@ from fastapi import FastAPI
 from jinja2 import Environment, FileSystemLoader, TemplateError, TemplateNotFound
 from typing_extensions import TypedDict
 
-from ._communication import MultiProcessExecutionManager, ThreadedExecutionManager
-from ._communication import QueueCommunicationChannel as CommunicationChannel
-from ._communication import QueueCommunicationManager as CommunicationManager
-from ._execution import _execute
+from .communication import MultiProcessExecutionManager, ThreadedExecutionManager
+from .communication import QueueCommunicationChannel as CommunicationChannel
+from .communication import QueueCommunicationManager as CommunicationManager
+from .execution import _execute
 from .models import (
     ErrorMessage,
     GetStateMessage,

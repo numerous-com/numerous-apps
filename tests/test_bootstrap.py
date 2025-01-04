@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from numerous.apps._bootstrap import copy_template, install_requirements, main, run_app
+from numerous.apps.bootstrap import copy_template, install_requirements, main, run_app
 
 
 @pytest.fixture
@@ -78,7 +78,9 @@ def test_run_app(mock_project_path):
     with patch("subprocess.run") as mock_run:
         run_app(mock_project_path)
         mock_run.assert_called_once_with(
-            [sys.executable, "app.py"], cwd=mock_project_path, check=False
+            ["uvicorn", "app:app", "--port", "8000", "--host", "127.0.0.1"],
+            cwd=mock_project_path,
+            check=False,
         )
 
 
@@ -87,9 +89,9 @@ def test_main_basic_flow(caplog):
     test_args = ["script_name", "test_project"]
     with (
         patch("sys.argv", test_args),
-        patch("numerous.apps._bootstrap.copy_template") as mock_copy,
-        patch("numerous.apps._bootstrap.install_requirements") as mock_install,
-        patch("numerous.apps._bootstrap.run_app") as mock_run,
+        patch("numerous.apps.bootstrap.copy_template") as mock_copy,
+        patch("numerous.apps.bootstrap.install_requirements") as mock_install,
+        patch("numerous.apps.bootstrap.run_app") as mock_run,
     ):
         main()
         mock_copy.assert_called_once()
@@ -102,9 +104,9 @@ def test_main_with_skip_options(caplog):
     test_args = ["script_name", "test_project", "--skip-deps", "--run-skip"]
     with (
         patch("sys.argv", test_args),
-        patch("numerous.apps._bootstrap.copy_template") as mock_copy,
-        patch("numerous.apps._bootstrap.install_requirements") as mock_install,
-        patch("numerous.apps._bootstrap.run_app") as mock_run,
+        patch("numerous.apps.bootstrap.copy_template") as mock_copy,
+        patch("numerous.apps.bootstrap.install_requirements") as mock_install,
+        patch("numerous.apps.bootstrap.run_app") as mock_run,
     ):
         main()
         mock_copy.assert_called_once()

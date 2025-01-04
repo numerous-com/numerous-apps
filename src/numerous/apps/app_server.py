@@ -20,20 +20,20 @@ from jinja2 import FileSystemLoader, meta
 from starlette.responses import HTMLResponse
 from starlette.websockets import WebSocketDisconnect
 
-from ._builtins import ParentVisibility
-from ._server import (
-    NumerousApp,
-    SessionData,
-    _get_session,
-    _get_template,
-    _load_main_js,
-)
+from .builtins import ParentVisibility
 from .models import (
     ErrorMessage,
     GetWidgetStatesMessage,
     InitConfigMessage,
     WidgetUpdateMessage,
     encode_model,
+)
+from .server import (
+    NumerousApp,
+    SessionData,
+    _get_session,
+    _get_template,
+    _load_main_js,
 )
 
 

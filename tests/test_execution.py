@@ -5,7 +5,7 @@ import pytest
 from anywidget import AnyWidget
 from traitlets import Int, Unicode
 
-from numerous.apps._execution import (
+from numerous.apps.execution import (
     NumpyJSONEncoder,
     _execute,
     _handle_widget_message,

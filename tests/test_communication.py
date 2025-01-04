@@ -4,14 +4,14 @@ from threading import Event
 import pytest
 import pickle
 
-from numerous.apps._communication import (
+from numerous.apps.communication import (
     QueueCommunicationChannel as CommunicationChannel,
 )
-from numerous.apps._communication import (
+from numerous.apps.communication import (
     QueueCommunicationManager as CommunicationManager,
 )
-from numerous.apps._communication import ThreadedExecutionManager
-from numerous.apps._communication import (
+from numerous.apps.communication import ThreadedExecutionManager
+from numerous.apps.communication import (
     QueueCommunicationChannel,
     QueueCommunicationManager,
     MultiProcessExecutionManager,

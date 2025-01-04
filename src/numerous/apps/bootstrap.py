@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Bootstrap a new app project from our template."""
 
 import argparse
 import logging
@@ -49,10 +50,12 @@ def install_requirements(project_path: Path) -> None:
         sys.exit(1)
 
 
-def run_app(project_path: Path) -> None:
+def run_app(project_path: Path, port: int = 8000, host: str = "127.0.0.1") -> None:
     """Run the app."""
     subprocess.run(  # noqa: S603
-        [sys.executable, "app.py"], cwd=project_path, check=False
+        ["uvicorn", "app:app", "--port", str(port), "--host", str(host)],  # noqa: S607
+        cwd=project_path,
+        check=False,
     )
 
 
@@ -61,18 +64,20 @@ def main() -> None:
         description="Bootstrap a new app project from our template"
     )
     parser.add_argument("project_name", help="Name of the new project")
-
     parser.add_argument(
         "--skip-deps", action="store_true", help="Skip installing dependencies"
     )
-
     parser.add_argument(
         "--run-skip", action="store_true", help="Skip running the app after creation"
     )
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port to run the server on"
+    )
+    parser.add_argument(
+        "--host", type=str, default="127.0.0.1", help="Host to run the server on"
+    )
 
     args = parser.parse_args()
-
-    # Convert paths to Path objects
 
     project_path = Path(args.project_name)
 
@@ -84,7 +89,7 @@ def main() -> None:
         install_requirements(project_path)
 
     if not args.run_skip:
-        run_app(project_path)
+        run_app(project_path, args.port, args.host)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from numerous.apps._builtins import tab_visibility
+from numerous.apps.builtins import tab_visibility
 
 
 class MockTabsWidget:

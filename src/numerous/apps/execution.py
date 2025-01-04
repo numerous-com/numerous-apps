@@ -1,3 +1,5 @@
+"""Module for executing apps."""
+
 import json
 import logging
 from collections.abc import Callable
@@ -6,8 +8,8 @@ from typing import Any, TypedDict
 
 from anywidget import AnyWidget
 
-from ._communication import CommunicationChannel as CommunicationChannel
-from ._communication import QueueCommunicationManager as CommunicationManager
+from .communication import CommunicationChannel as CommunicationChannel
+from .communication import QueueCommunicationManager as CommunicationManager
 from .models import (
     ErrorMessage,
     InitConfigMessage,

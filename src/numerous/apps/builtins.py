@@ -1,3 +1,5 @@
+"""Built-in widgets."""
+
 import pathlib
 from typing import Any
 
@@ -7,6 +9,8 @@ from anywidget import AnyWidget
 
 
 class ParentVisibility(anywidget.AnyWidget):  # type: ignore [misc]
+    """Widget to control the visibility of the parent widget."""
+
     _esm = pathlib.Path(__file__).parent / "js" / "parent_visibility.js"
     _css = """
     .numerous-apps-visible {

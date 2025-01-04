@@ -8,10 +8,10 @@ from queue import Queue
 import pytest
 from starlette.templating import Jinja2Templates
 
-from numerous.apps._communication import (
+from numerous.apps.communication import (
     QueueCommunicationManager,
 )
-from numerous.apps._server import (
+from numerous.apps.server import (
     AppInitError,
     _app_process,
     _create_handler,
@@ -37,7 +37,7 @@ def test_get_session_creates_new_session() -> None:
     session_id = "test_session"
 
     with patch(
-        "numerous.apps._server.MultiProcessExecutionManager",
+        "numerous.apps.server.MultiProcessExecutionManager",
         return_value=MockExecutionManager(),
     ):
         session = _get_session(
@@ -63,7 +63,7 @@ def test_get_session_loads_config() -> None:
     }
 
     with patch(
-        "numerous.apps._server.MultiProcessExecutionManager", return_value=mock_manager
+        "numerous.apps.server.MultiProcessExecutionManager", return_value=mock_manager
     ):
         session = _get_session(
             allow_threaded=False,
@@ -89,7 +89,7 @@ def test_get_session_raises_on_invalid_config() -> None:
 
     with pytest.raises(AppInitError):
         with patch(
-            "numerous.apps._server.MultiProcessExecutionManager",
+            "numerous.apps.server.MultiProcessExecutionManager",
             return_value=mock_manager,
         ):
             _get_session(
@@ -128,7 +128,7 @@ def test_app_process_loads_module() -> None:
         # Create a test module file
         module_path = Path(tmpdir) / "test_app.py"
         module_content = """
-from numerous.apps._server import NumerousApp
+from numerous.apps.server import NumerousApp
 app = NumerousApp()
 app.widgets = {}
 """
@@ -138,7 +138,7 @@ app.widgets = {}
         comm_manager = QueueCommunicationManager(Event(), Queue(), Queue())
 
         # Mock _execute to prevent actual execution
-        with patch("numerous.apps._server._execute") as mock_execute:
+        with patch("numerous.apps.server._execute") as mock_execute:
             # Run app process
             _app_process(
                 session_id="test_session",
@@ -197,7 +197,7 @@ def test_load_main_js_file_exists() -> None:
         test_content = "console.log('test');"
         js_file.write_text(test_content)
 
-        with patch("numerous.apps._server.Path") as mock_path:
+        with patch("numerous.apps.server.Path") as mock_path:
             # Make Path(__file__).parent point to our temp directory
             mock_path.return_value.parent = Path(tmpdir)
 
@@ -207,7 +207,7 @@ def test_load_main_js_file_exists() -> None:
 
 def test_load_main_js_file_missing() -> None:
     """Test that _load_main_js handles missing file gracefully."""
-    with patch("numerous.apps._server.Path") as mock_path:
+    with patch("numerous.apps.server.Path") as mock_path:
         # Make Path(__file__).parent point to a non-existent directory
         mock_path.return_value.parent = Path("/nonexistent")
 
@@ -261,7 +261,7 @@ def test_get_session_with_threaded_execution() -> None:
     sessions: dict[str, Any] = {}
     session_id = "test_session"
 
-    with patch("numerous.apps._server.ThreadedExecutionManager") as mock_threaded:
+    with patch("numerous.apps.server.ThreadedExecutionManager") as mock_threaded:
         mock_manager = MockExecutionManager()
         mock_threaded.return_value = mock_manager
 

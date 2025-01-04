@@ -1,3 +1,3 @@
 """Module containing the app framework."""
 
-from .app import create_app as create_app
+from .app_server import create_app as create_app

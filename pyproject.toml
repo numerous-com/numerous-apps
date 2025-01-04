@@ -31,7 +31,7 @@ classifiers = [
 dev = [
     "anywidget[dev]==0.9.13",
     "python-dotenv==1.0.1",
-    "numerous-widgets==0.1.11",
+    "numerous-widgets",
     "numpy==2.1.3",
     "pytest==8.3.4",
     "ruff==0.6.4",
@@ -85,17 +85,30 @@ Repository = "https://github.com/numerous-com/numerous-app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["numerous.apps"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["numerous.*"]
+namespaces = true
 
 [tool.setuptools.package-data]
-"numerous.apps" = ["py.typed"]  # If you're using type hints
+"numerous.apps" = [
+    "py.typed",
+    "js/*.js",
+    "static/*.md",
+    "templates/*.html.j2",
+    "bootstrap_app/*",
+    "bootstrap_app/static/*",
+    "bootstrap_app/static/css/*",
+    "bootstrap_app/widgets/*",
+]
 
 [project.scripts]
-numerous-bootstrap = "numerous.apps._bootstrap:main"
+numerous-bootstrap = "numerous.apps.bootstrap:main"
 
 [tool.ruff]
 src = ["src"]
-exclude = ["examples", "tests"]
+exclude = ["examples", "tests", "e-e test"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -134,7 +147,7 @@ mark-parentheses = false
 
 [tool.mypy]
 ignore_missing_imports = true
-exclude = ["examples"]
+exclude = ["examples", "e-e test"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=numerous.apps --cov-report=term-missing --cov-report=html"

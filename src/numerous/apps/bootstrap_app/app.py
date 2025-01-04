@@ -1,4 +1,4 @@
-"""Module containing the app for the bootstrap app."""
+"""Module containing the app for the bootstrap app."""  # noqa: INP001
 
 from logging import getLogger
 from typing import Any
@@ -11,7 +11,7 @@ except ImportError:
 
 import numerous.widgets as wi
 from numerous.apps import create_app
-from numerous.apps._builtins import tab_visibility
+from numerous.apps.builtins import tab_visibility
 
 
 logger = getLogger(__name__)

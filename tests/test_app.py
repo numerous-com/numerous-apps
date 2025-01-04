@@ -5,8 +5,8 @@ import multiprocessing
 import pytest
 from fastapi.testclient import TestClient
 
-from numerous.apps.app import AnyWidget, create_app
-from numerous.apps._communication import MultiProcessExecutionManager
+from numerous.apps.app_server import AnyWidget, create_app
+from numerous.apps.communication import MultiProcessExecutionManager
 
 
 @pytest.fixture(scope="session")
@@ -90,7 +90,7 @@ def app_generator():
 
 @pytest.fixture
 def app(test_dirs):
-    from numerous.apps.app import templates  # Import templates object
+    from numerous.apps.app_server import templates  # Import templates object
 
     # Add the test templates directory to Jinja2's search path
     templates.env.loader.searchpath.append(str(test_dirs / "templates"))
@@ -188,7 +188,7 @@ def test_websocket_error_in_dev_mode(client, test_dirs):
 )
 def test_multiprocess_mode(test_dirs, caplog):
     """Test that the app works in multiprocess mode."""
-    from numerous.apps.app import templates
+    from numerous.apps.app_server import templates
 
     # Add the test templates directory to Jinja2's search path
     templates.env.loader.searchpath.append(str(test_dirs / "templates"))

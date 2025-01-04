@@ -1,3 +1,5 @@
+"""Module for communication between app instances and the server."""
+
 import multiprocessing
 import multiprocessing.synchronize
 import threading
@@ -17,19 +19,19 @@ if hasattr(multiprocessing, "set_start_method"):
 class CommunicationChannel(ABC):
     @abstractmethod
     def send(self, message: dict[str, Any]) -> None:
-        pass
+        """Send a message to the queue."""
 
     @abstractmethod
     def receive(self, timeout: float | None = None) -> Any:  # noqa: ANN401
-        pass
+        """Receive a message from the queue."""
 
     @abstractmethod
     def empty(self) -> bool:
-        pass
+        """Check if the queue is empty."""
 
     @abstractmethod
     def receive_nowait(self) -> dict[str, Any]:
-        pass
+        """Receive a message from the queue without waiting."""
 
 
 class CommunicationManager(ABC):
@@ -57,18 +59,23 @@ class ExecutionManager(ABC):
 
 class QueueCommunicationChannel(CommunicationChannel):
     def __init__(self, queue: Queue) -> None:  # type: ignore [type-arg]
+        """Initialize the QueueCommunicationChannel."""
         self.queue = queue
 
     def send(self, message: Any) -> None:  # noqa: ANN401
+        """Send a message to the queue."""
         self.queue.put(message)
 
     def receive(self, timeout: float | None = None) -> Any:  # noqa: ANN401
+        """Receive a message from the queue."""
         return self.queue.get(timeout=timeout)
 
     def empty(self) -> bool:
+        """Check if the queue is empty."""
         return self.queue.empty()
 
     def receive_nowait(self) -> Any:  # noqa: ANN401
+        """Receive a message from the queue without waiting."""
         try:
             return self.queue.get_nowait()
         except Empty:
@@ -82,6 +89,7 @@ class QueueCommunicationManager(CommunicationManager):
         queue_to_app: Queue,  # type: ignore [type-arg]
         queue_from_app: Queue,  # type: ignore [type-arg]
     ) -> None:
+        """Initialize the QueueCommunicationManager."""
         super().__init__()
         self.to_app_instance = QueueCommunicationChannel(queue_to_app)
         self.from_app_instance = QueueCommunicationChannel(queue_from_app)
@@ -96,6 +104,7 @@ class MultiProcessExecutionManager(ExecutionManager):
         target: Callable[[str, str, str, str, CommunicationManager], None],
         session_id: str,
     ) -> None:
+        """Initialize the MultiProcessExecutionManager."""
         self.communication_manager: CommunicationManager = QueueCommunicationManager(
             stop_event=multiprocessing.Event(),
             queue_to_app=multiprocessing.Queue(),  # type: ignore [arg-type]
@@ -111,6 +120,7 @@ class MultiProcessExecutionManager(ExecutionManager):
         module_path: str,
         template: str,
     ) -> None:
+        """Start the process."""
         if hasattr(self, "process") and self.process.is_alive():
             raise RuntimeError("Process already running")
         self.process = multiprocessing.Process(
@@ -127,11 +137,13 @@ class MultiProcessExecutionManager(ExecutionManager):
         self.process.start()
 
     def stop(self) -> None:
+        """Stop the process."""
         if not hasattr(self, "process") or self.process is None:
             raise RuntimeError("Process not running")
         self.process.terminate()
 
     def join(self) -> None:
+        """Join the process."""
         if not hasattr(self, "process") or self.process is None:
             raise RuntimeError("Process not running")
         self.process.join()
@@ -146,6 +158,7 @@ class ThreadedExecutionManager(ExecutionManager):
         target: Callable[[str, str, str, str, CommunicationManager], None],
         session_id: str,
     ) -> None:
+        """Initialize the ThreadedExecutionManager."""
         self.communication_manager: CommunicationManager = QueueCommunicationManager(
             stop_event=threading.Event(),
             queue_to_app=Queue(),
@@ -160,6 +173,7 @@ class ThreadedExecutionManager(ExecutionManager):
         module_path: str,
         template: str,
     ) -> None:
+        """Start the thread."""
         if hasattr(self, "thread"):
             raise RuntimeError(
                 "Thread already exists. Please join the thread before\
@@ -179,11 +193,13 @@ class ThreadedExecutionManager(ExecutionManager):
         self.thread.start()
 
     def stop(self) -> None:
+        """Stop the thread."""
         if not hasattr(self, "thread") or self.thread is None:
             raise RuntimeError("Thread not running")
         self.communication_manager.stop_event.set()
 
     def join(self) -> None:
+        """Join the thread."""
         if not hasattr(self, "thread") or self.thread is None:
             raise RuntimeError("Thread not running")
         self.thread.join()
