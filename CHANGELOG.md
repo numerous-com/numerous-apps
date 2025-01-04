@@ -2,6 +2,20 @@
 
 
 
+## v0.1.1 (2025-01-04)
+
+### Fix
+
+* fix(apps): Enhance WebSocket message handling and remove unused charts module
+
+- Introduced `encode_model` function for improved serialization of Pydantic models in WebSocket communication.
+- Updated message handling in `app.py` to utilize `encode_model` for sending messages, enhancing data integrity.
+- Removed the unused `charts.py` module from the bootstrap app, streamlining the codebase.
+- Adjusted import statements in `app.py` to handle potential import errors more gracefully.
+
+These changes improve the clarity and reliability of the application&#39;s WebSocket communication and reduce unnecessary code. ([`3e7add2`](https://github.com/numerous-com/numerous-apps/commit/3e7add2080eda486196f4f1ecdc5db2e0b98ccb1))
+
+
 ## v0.1.0 (2025-01-04)
 
 ### Feature
