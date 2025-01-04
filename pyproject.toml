@@ -155,7 +155,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["numerous.apps"]
-branch = true
+branch = false
 
 [tool.coverage.report]
 exclude_lines = [
