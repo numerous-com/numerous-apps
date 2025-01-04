@@ -45,8 +45,13 @@ jobs:
       - run: coverage run -m pytest -vv tests/
       - run: coverage report | grep 'TOTAL' | awk '{print "COVERAGE_PCT=" $4}' >> $GITHUB_ENV
       # TODO: publish coverage report
+  end_to_end_test:
+    name: End-to-end test
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -m e-e-test/e-e-test-script.py
   build:
-    needs: test
+    needs: [test, end_to_end_test]
     timeout-minutes: 15
     runs-on: ubuntu-latest
     name: Build package
