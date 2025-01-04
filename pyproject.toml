@@ -108,7 +108,7 @@ numerous-bootstrap = "numerous.apps.bootstrap:main"
 
 [tool.ruff]
 src = ["src"]
-exclude = ["examples", "tests", "e-e test"]
+exclude = ["examples", "tests", "e-e-test"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -147,7 +147,7 @@ mark-parentheses = false
 
 [tool.mypy]
 ignore_missing_imports = true
-exclude = ["examples", "e-e test"]
+exclude = ["examples", "e-e-test"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=numerous.apps --cov-report=term-missing --cov-report=html"
