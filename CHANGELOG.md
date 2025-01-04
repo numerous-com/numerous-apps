@@ -2,6 +2,26 @@
 
 
 
+## v0.1.2 (2025-01-04)
+
+### Fix
+
+* fix(app): Update footer year and pin package versions in requirements.txt
+
+- Updated the footer year in index.html.j2 from 2024 to 2025 for accuracy.
+- Specified versions for numpy and numerous-widgets in requirements.txt to ensure consistent behavior across environments.
+- Added numerous-apps to requirements.txt for improved dependency management.
+
+These changes enhance the application&#39;s reliability and maintain up-to-date information in the user interface. ([`75d72a5`](https://github.com/numerous-com/numerous-apps/commit/75d72a50d893ba00752270794dfa1c504958913d))
+
+* fix(dependencies): Pin package versions in pyproject.toml for stability
+
+- Updated dependencies in `pyproject.toml` to specific versions to ensure consistent behavior across environments.
+- This includes pinning versions for `fastapi`, `uvicorn`, `jinja2`, `anywidget`, `numpy`, `pydantic`, and several development dependencies.
+
+These changes enhance the reliability of the application by preventing unexpected issues due to version discrepancies. ([`e7a3b5a`](https://github.com/numerous-com/numerous-apps/commit/e7a3b5aff9b9cda2b578867475e07ca55e518ffd))
+
+
 ## v0.1.1 (2025-01-04)
 
 ### Fix
