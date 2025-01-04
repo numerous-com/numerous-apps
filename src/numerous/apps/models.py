@@ -32,6 +32,11 @@ class NumpyJSONEncoder(json.JSONEncoder):
         return super().default(obj)  # type: ignore[no-any-return]
 
 
+def encode_model(model: BaseModel) -> str:
+    _dict = model.model_dump()
+    return json.dumps(_dict, cls=NumpyJSONEncoder)
+
+
 class WidgetUpdateMessage(BaseModel):
     type: str = "widget_update"
     widget_id: str

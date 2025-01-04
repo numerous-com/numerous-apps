@@ -33,6 +33,7 @@ from .models import (
     GetWidgetStatesMessage,
     InitConfigMessage,
     WidgetUpdateMessage,
+    encode_model,
 )
 
 
@@ -253,14 +254,14 @@ async def handle_send_message(
 
             if response.get("type") == "widget_update":
                 update_message = WidgetUpdateMessage(**response)
-                await websocket.send_text(update_message.model_dump_json())
+                await websocket.send_text(encode_model(update_message))
             elif response.get("type") == "init-config":
                 init_config_message = InitConfigMessage(**response)
-                await websocket.send_text(init_config_message.model_dump_json())
+                await websocket.send_text(encode_model(init_config_message))
             elif response.get("type") == "error":
                 error_message = ErrorMessage(**response)
                 if _app.state.config.dev:
-                    await websocket.send_text(error_message.model_dump_json())
+                    await websocket.send_text(encode_model(error_message))
         await asyncio.sleep(0.01)
     except WebSocketDisconnect:
         logger.debug(f"WebSocket disconnected for client {client_id}")

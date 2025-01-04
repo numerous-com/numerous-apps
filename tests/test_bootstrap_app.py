@@ -37,8 +37,3 @@ def test_run_app():
     ], "Selection options mismatch"
 
     # Additional checks can be added here for other components
-
-
-# Run the test
-if __name__ == "__main__":
-    pytest.main()

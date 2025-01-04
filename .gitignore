@@ -21,3 +21,4 @@ test_apps
 
 build
 htmlcov
+.coverage

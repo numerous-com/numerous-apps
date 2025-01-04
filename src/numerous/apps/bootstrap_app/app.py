@@ -3,11 +3,15 @@
 from logging import getLogger
 from typing import Any
 
+
+try:
+    from widgets.charts import chart, map_widget
+except ImportError:
+    from .widgets.charts import chart, map_widget
+
 import numerous.widgets as wi
 from numerous.apps import create_app
 from numerous.apps._builtins import tab_visibility
-
-from .charts import chart, map_widget
 
 
 logger = getLogger(__name__)
