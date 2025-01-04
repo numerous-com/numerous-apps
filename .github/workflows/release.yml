@@ -57,7 +57,7 @@ jobs:
           python-version: '3.12' 
           cache: 'pip'
       - run: pip install -e .[dev]
-      - run: python -m e-e-test/e-e-test-script
+      - run: python e-e-test/e-e-test-script.py
   build:
     needs: [test, end_to_end_test]
     timeout-minutes: 15
