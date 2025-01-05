@@ -226,3 +226,47 @@ def _handle_widget_message(
                 traceback="",  # traceback.format_exc()
             ).model_dump()
         )
+
+
+def _describe_widgets(widgets: dict[str, AnyWidget]) -> dict[str, Any]:
+    """Generate a complete description of widgets and their traits."""
+    widget_descriptions = {}
+    for widget_id, widget in widgets.items():
+        traits = {}
+        all_traits = widget.traits()
+
+        # Filter out ignored traits
+        valid_traits = {
+            name: trait
+            for name, trait in all_traits.items()
+            if name not in ignored_traits
+        }
+
+        for name, trait in valid_traits.items():
+            # Handle default value serialization
+            default_value = trait.default_value
+            # Convert Sentinel values to string representation
+            if (
+                hasattr(default_value, "__class__")
+                and default_value.__class__.__name__ == "Sentinel"
+            ):
+                default_value = str(default_value)
+
+            # Get basic trait information
+            trait_info = {
+                "type": trait.__class__.__name__,
+                "default": default_value,
+                "read_only": trait.read_only if hasattr(trait, "read_only") else False,
+            }
+            # Add description if available
+            if hasattr(trait, "help") and trait.help:
+                trait_info["description"] = trait.help
+
+            traits[name] = trait_info
+
+        widget_descriptions[widget_id] = {
+            "type": widget.__class__.__name__,
+            "traits": traits,
+        }
+
+    return widget_descriptions
