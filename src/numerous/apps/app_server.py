@@ -12,7 +12,7 @@ from typing import Any
 
 import jinja2
 from anywidget import AnyWidget
-from fastapi import Request, WebSocket
+from fastapi import HTTPException, Request, WebSocket
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,10 +21,16 @@ from starlette.responses import HTMLResponse
 from starlette.websockets import WebSocketDisconnect
 
 from .builtins import ParentVisibility
+from .execution import _describe_widgets
 from .models import (
+    AppDescription,
+    AppInfo,
     ErrorMessage,
     GetWidgetStatesMessage,
     InitConfigMessage,
+    SetTraitValue,
+    TemplateDescription,
+    TraitValue,
     WidgetUpdateMessage,
     encode_model,
 )
@@ -372,3 +378,119 @@ def create_app(  # noqa: PLR0912, C901
     _app.widgets = widgets
 
     return _app
+
+
+@_app.get("/api/describe")  # type: ignore[misc]
+async def describe_app() -> AppDescription:
+    """
+    Return a complete description of the app.
+
+    Includes widgets, template context, and structure.
+    """
+    # Get template information
+    template_name = _get_template(
+        _app.state.config.template, _app.state.config.internal_templates
+    )
+    template_source = ""
+    try:
+        if isinstance(templates.env.loader, FileSystemLoader):
+            template_source = templates.env.loader.get_source(
+                templates.env, template_name
+            )[0]
+    except jinja2.exceptions.TemplateNotFound:
+        template_source = "Template not found"
+
+    # Parse template for context variables
+    parsed_content = templates.env.parse(template_source)
+    template_variables = meta.find_undeclared_variables(parsed_content)
+    template_variables.discard("request")
+    template_variables.discard("title")
+
+    return AppDescription(
+        app_info=AppInfo(
+            dev_mode=_app.state.config.dev,
+            base_dir=_app.state.config.base_dir,
+            module_path=_app.state.config.module_path,
+            allow_threaded=_app.state.config.allow_threaded,
+        ),
+        template=TemplateDescription(
+            name=template_name,
+            source=template_source,
+            variables=list(template_variables),
+        ),
+        widgets=_describe_widgets(_app.widgets),
+    )
+
+
+@_app.get("/api/widgets/{widget_id}/traits/{trait_name}")  # type: ignore[misc]
+async def get_trait_value(
+    widget_id: str, trait_name: str, session_id: str
+) -> TraitValue:
+    """Get the current value of a widget's trait."""
+    if widget_id not in _app.widgets:
+        raise HTTPException(status_code=404, detail=f"Widget '{widget_id}' not found")
+
+    widget = _app.widgets[widget_id]
+    if trait_name not in widget.traits():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Trait '{trait_name}' not found on widget '{widget_id}'",
+        )
+
+    try:
+        value = getattr(widget, trait_name)
+        return TraitValue(
+            widget_id=widget_id, trait=trait_name, value=value, session_id=session_id
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error getting trait value: {e!s}"
+        ) from e
+
+
+@_app.put("/api/widgets/{widget_id}/traits/{trait_name}")  # type: ignore[misc]
+async def set_trait_value(
+    widget_id: str,
+    trait_name: str,
+    trait_value: SetTraitValue,
+    session_id: str,
+) -> TraitValue:
+    """Set the value of a widget's trait."""
+    session = _get_session(
+        _app.state.config.allow_threaded,
+        session_id,
+        _app.state.config.base_dir,
+        _app.state.config.module_path,
+        _app.state.config.template,
+        _app.state.config.sessions,
+    )
+
+    if widget_id not in _app.widgets:
+        raise HTTPException(status_code=404, detail=f"Widget '{widget_id}' not found")
+
+    widget = _app.widgets[widget_id]
+    if trait_name not in widget.traits():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Trait '{trait_name}' not found on widget '{widget_id}'",
+        )
+
+    converted_value = trait_value.value
+
+    # Send the converted value to widget using the communication manager
+    session["execution_manager"].communication_manager.to_app_instance.send(
+        {
+            "type": "widget_update",
+            "widget_id": widget_id,
+            "property": trait_name,
+            "value": converted_value,
+        }
+    )
+
+    # Return the updated trait value
+    return TraitValue(
+        widget_id=widget_id,
+        trait=trait_name,
+        value=converted_value,
+        session_id=session_id,
+    )

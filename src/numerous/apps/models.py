@@ -66,3 +66,59 @@ class GetStateMessage(BaseModel):
 class GetWidgetStatesMessage(BaseModel):
     type: str = "get_widget_states"
     client_id: str
+
+
+class TraitDescription(BaseModel):
+    """Description of a widget trait."""
+
+    type: str
+    default: Any
+    read_only: bool
+    description: str | None = None
+
+
+class WidgetDescription(BaseModel):
+    """Description of a widget."""
+
+    type: str
+    traits: dict[str, TraitDescription]
+
+
+class TemplateDescription(BaseModel):
+    """Description of the app template."""
+
+    name: str
+    source: str
+    variables: list[str]
+
+
+class AppInfo(BaseModel):
+    """Basic information about the app."""
+
+    dev_mode: bool
+    base_dir: str
+    module_path: str
+    allow_threaded: bool
+
+
+class AppDescription(BaseModel):
+    """Complete description of a Numerous app."""
+
+    app_info: AppInfo
+    template: TemplateDescription
+    widgets: dict[str, WidgetDescription]
+
+
+class TraitValue(BaseModel):
+    """Value of a widget trait."""
+
+    widget_id: str
+    trait: str
+    value: Any
+    session_id: str
+
+
+class SetTraitValue(BaseModel):
+    """Model for setting a trait value."""
+
+    value: Any

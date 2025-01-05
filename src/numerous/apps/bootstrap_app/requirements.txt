@@ -1,2 +1,2 @@
 numpy==2.1.3
-numerous-widgets==0.1.11
+numerous-widgets
