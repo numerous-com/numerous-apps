@@ -1,0 +1,145 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,200..1000;1,6..12,200..1000&display=swap');
+
+.marimo {
+  font-family: "Nunito Sans", sans-serif;
+}
+
+/* Add this new rule */
+body {
+  font-family: "Nunito Sans", sans-serif;
+}
+
+.title {
+  text-align: left;
+  font-size: 3em;
+  background-color: black;
+  color: black;
+  padding-left: 0.5em;
+}
+
+.column_with_spacing {
+  display: flex;
+  flex-direction: column;
+  gap: 2em;
+  margin-top: 2em;
+}
+
+.bordered_container {
+  border-right: 1px solid var(--ui-widget-border-color);
+  border-bottom: 1px solid var(--ui-widget-border-color);
+  border-left: 1px solid var(--ui-widget-border-color);
+  border-radius: 4px;
+  box-shadow: var(--ui-widget-dropdown-shadow);
+  padding: 1em;
+  flex: 1;
+  min-height: 0;
+}
+
+.header-container {
+  display: flex;
+  background-color: black;
+  padding: 1em;
+  height: 4vh;
+  overflow: hidden;
+}
+
+.logo {
+  transform: scale(0.2);
+  transform-origin: top left;
+  background-color: black;
+  padding-left: 1em;
+  height: 40px;
+}
+
+body {
+  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+footer {
+  margin-top: auto;
+  padding: 1em;
+  text-align: center;
+  background-color: #f8f8f8;
+}
+
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1em;
+  display: flex;
+  flex-direction: column;
+}
+
+.error-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.7);
+    z-index: 1000;
+}
+.error-modal-content {
+    position: relative;
+    background-color: #fff;
+    margin: 15% auto;
+    padding: 20px;
+    width: 80%;
+    max-width: 600px;
+    border-radius: 5px;
+    border-left: 5px solid #dc3545;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+.error-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ffebee;
+}
+.error-title {
+    color: #dc3545;
+    font-size: 1.2em;
+    font-weight: bold;
+}
+.close-button {
+    background: none;
+    border: none;
+    font-size: 1.5em;
+    color: #666;
+    cursor: pointer;
+    padding: 0 5px;
+}
+.close-button:hover {
+    color: #dc3545;
+}
+.error-modal-content pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+    border: 1px solid #eee;
+    font-family: monospace;
+    color: #dc3545;
+}
+.dismiss-button {
+    margin-top: 15px;
+    padding: 8px 16px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+}
+.dismiss-button:hover {
+    background-color: #c82333;
+}

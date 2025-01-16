@@ -82,9 +82,9 @@ def test_numerous_bootstrap_integration(tmp_path: Path) -> None:
         env={**os.environ, "PYTHONPATH": str(tmp_path)},
         text=True,  # Use text mode instead of bytes
         bufsize=1,  # Line buffered
-        preexec_fn=os.setsid
-        if sys.platform != "win32"
-        else None,  # Create new process group on Unix
+        preexec_fn=(
+            os.setsid if sys.platform != "win32" else None
+        ),  # Create new process group on Unix
     )
 
     # Create thread to continuously read and log output

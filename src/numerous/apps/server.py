@@ -22,6 +22,7 @@ from .execution import _execute
 from .models import (
     ErrorMessage,
     GetStateMessage,
+    MessageType,
 )
 
 
@@ -81,7 +82,7 @@ def _get_session(
     elif load_config:
         _session = sessions[session_id]
         _session["execution_manager"].communication_manager.to_app_instance.send(
-            GetStateMessage(type="get_state").model_dump()
+            GetStateMessage(type=MessageType.GET_STATE).model_dump()
         )
 
     if load_config:
@@ -206,7 +207,7 @@ def _create_handler(
         )
         send_channel.send(
             {
-                "type": "widget_update",
+                "type": "widget-update",
                 "widget_id": wid,
                 "property": change.name,
                 "value": change.new,

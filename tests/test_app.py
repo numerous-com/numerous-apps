@@ -1,12 +1,20 @@
 import logging
 import os
 import multiprocessing
+import time
 
 import pytest
 from fastapi.testclient import TestClient
+from traitlets import Unicode
 
 from numerous.apps.app_server import AnyWidget, create_app
 from numerous.apps.communication import MultiProcessExecutionManager
+from numerous.apps.models import (
+    TraitValue, 
+    SetTraitValue,
+    ActionRequestMessage,
+    ActionResponseMessage
+)
 
 
 @pytest.fixture(scope="session")
@@ -70,22 +78,59 @@ def test_dirs(tmp_path_factory):
     os.chdir(original_dir)
 
 
+# Define the widget class at module level
+class TestWidgetWithTrait(AnyWidget):
+    # Define the trait using traitlets
+    value = Unicode("test").tag(sync=True)
+
+    def __init__(self):
+        super().__init__()
+        self.module = "test-widget"
+        self.html = "<div>Test Widget</div>"
+        
+    def traits(self, **kwargs):
+        # Handle sync parameter and return all traits
+        base_traits = super().traits(**kwargs)
+        # Don't add our own traits - they're already defined at class level
+        return base_traits
+
+
+class TestWidgetWithAction(AnyWidget):
+    """Test widget with an action."""
+    value = Unicode("test").tag(sync=True)
+    
+    def __init__(self):
+        super().__init__()
+        self.module = "test-widget"
+        self.html = "<div>Test Widget</div>"
+    
+    def test_action(self, arg1, kwarg1=None):
+        """Test action method."""
+        return f"Executed with {arg1} and {kwarg1}"
+    
+    def traits(self, **kwargs):
+        # Handle sync parameter and return all traits
+        base_traits = super().traits(**kwargs)
+        # Don't add our own traits - they're already defined at class level
+        return base_traits
+    
+    # Mark as action (simulating the @action decorator)
+    #test_action._is_action = True
+
 @pytest.fixture
 def test_widget():
-    widget = AnyWidget()  # Create instance first
-    widget.module = "test-widget"  # Set attributes after creation
-    widget.html = "<div>Test Widget</div>"
-    widget.attributes = {"value": "test"}
-    return widget
+    return TestWidgetWithTrait()
 
 
 def app_generator():
-    # This function will be called to create widgets in threaded mode
-    widget = AnyWidget()  # Create instance first
-    widget.module = "test-widget"  # Set attributes after creation
-    widget.html = "<div>Test Widget</div>"
-    widget.attributes = {"value": "test"}
-    return {"test_widget": widget}
+    # Create a widget class with an action
+    
+
+    # Return both the test widget and the original TestWidgetWithTrait
+    return {
+        "test_widget": TestWidgetWithAction(),
+        "test_widget_with_trait": TestWidgetWithTrait()
+    }
 
 
 @pytest.fixture
@@ -166,7 +211,6 @@ def test_missing_widget_warning(client, test_dirs, caplog):
         """
         )
 
-    app = create_app(template="missing.html.j2", dev=True, app_generator=app_generator)
 
     with caplog.at_level(logging.WARNING):
         response = client.get("/")
@@ -174,7 +218,7 @@ def test_missing_widget_warning(client, test_dirs, caplog):
 
 
 def test_websocket_error_in_dev_mode(client, test_dirs):
-    app = create_app(template="base.html.j2", dev=True, app_generator=app_generator)
+
 
     with client.websocket_connect("/ws/test-client/test-session") as websocket:
         # Test error handling in dev mode
@@ -183,8 +227,8 @@ def test_websocket_error_in_dev_mode(client, test_dirs):
 
 
 @pytest.mark.skipif(
-    os.environ.get('PYTEST_COVER', '0') == '1',
-    reason="Skip during coverage runs due to multiprocessing conflicts"
+    os.environ.get("PYTEST_COVER", "0") == "1",
+    reason="Skip during coverage runs due to multiprocessing conflicts",
 )
 def test_multiprocess_mode(test_dirs, caplog):
     """Test that the app works in multiprocess mode."""
@@ -192,40 +236,40 @@ def test_multiprocess_mode(test_dirs, caplog):
 
     # Add the test templates directory to Jinja2's search path
     templates.env.loader.searchpath.append(str(test_dirs / "templates"))
-    
+
     # Enable debug logging
     caplog.set_level(logging.DEBUG)
-    
+
     widget = AnyWidget()
     widget.module = "test-widget"
     widget.html = "<div>Test Widget</div>"
     widget.attributes = {"value": "test"}
-    
+
     app = create_app(
         template="base.html.j2",
         dev=True,
         widgets={"test_widget": widget},
         app_generator=None,  # Explicitly set to None to force multiprocess mode
     )
-    
+
     client = TestClient(app)
 
     try:
         # First verify we can access the home page
         response = client.get("/")
         assert response.status_code == 200
-        
+
         # Now test the widgets endpoint
         response = client.get("/api/widgets")
         assert response.status_code == 200
-        
+
         session_id = response.json()["session_id"]
         assert session_id in app.state.config.sessions
-        
+
         # Verify the execution manager type
         execution_manager = app.state.config.sessions[session_id]["execution_manager"]
         assert isinstance(execution_manager, MultiProcessExecutionManager)
-        
+
         # Verify the process is running
         assert execution_manager.process.is_alive()
 
@@ -239,14 +283,15 @@ def test_widget_collection_from_locals(test_dirs):
     test_widget1 = AnyWidget()
     test_widget1.module = "test-widget-1"
     test_widget1.html = "<div>Test Widget 1</div>"
-    
+
     test_widget2 = AnyWidget()
     test_widget2.module = "test-widget-2"
     test_widget2.html = "<div>Test Widget 2</div>"
-    
+
     # Create template with both widgets
     with open(test_dirs / "templates" / "two_widgets.html.j2", "w") as f:
-        f.write("""
+        f.write(
+            """
         <!DOCTYPE html>
         <html>
         <body>
@@ -254,16 +299,125 @@ def test_widget_collection_from_locals(test_dirs):
             {{ test_widget2 }}
         </body>
         </html>
-        """)
-    
+        """
+        )
+
     # Create app without explicitly providing widgets
     app = create_app(
         template="two_widgets.html.j2",
         dev=True,
         app_generator=None,
     )
-    
+
     # Verify both widgets were collected
     assert "test_widget1" in app.widgets
     assert "test_widget2" in app.widgets
+
+
+def test_describe_app_endpoint(client):
+    """Test the /api/describe endpoint."""
+    response = client.get("/api/describe")
+    assert response.status_code == 200
+    data = response.json()
     
+    # Verify the structure of the response
+    assert "app_info" in data
+    assert "template" in data
+    assert "widgets" in data
+    
+    # Verify app_info contents
+    assert "dev_mode" in data["app_info"]
+    assert "base_dir" in data["app_info"]
+    assert "module_path" in data["app_info"]
+
+
+def test_get_trait_value(client):
+    """Test getting a trait value from a widget."""
+    # First get a valid session ID
+    session_response = client.get("/api/widgets")
+    session_id = session_response.json()["session_id"]
+    
+    response = client.get(
+        f"/api/widgets/test_widget/traits/value?session_id={session_id}"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["widget_id"] == "test_widget"
+    assert data["trait"] == "value"
+    assert "value" in data
+
+
+def test_set_trait_value(client):
+    """Test setting a trait value on a widget."""
+    # First get a valid session ID
+    session_response = client.get("/api/widgets")
+
+ 
+    session_id = session_response.json()["session_id"]
+   
+    trait_value = SetTraitValue(value="new_test_value")
+    response = client.put(
+        f"/api/widgets/test_widget/traits/value?session_id={session_id}",
+        json=trait_value.model_dump()
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["widget_id"] == "test_widget"
+    assert data["trait"] == "value"
+    assert data["value"] == "new_test_value"
+
+
+def _test_execute_widget_action(client):
+    """Test executing an action on a widget."""
+    # First get a valid session ID
+    session_response = client.get("/api/widgets")
+    session_id = session_response.json()["session_id"]
+    
+    # Wait for the execution manager to be ready by polling the widget state
+    max_retries = 10
+    retry_delay = 0.2
+    
+    for _ in range(max_retries):
+        # Try to get widget state
+        response = client.get(f"/api/widgets/test_widget/traits/value?session_id={session_id}")
+        if response.status_code == 200:
+            break
+        time.sleep(retry_delay)
+    else:
+        pytest.fail("Execution manager failed to initialize")
+    
+    # Set trait value
+    trait_value = SetTraitValue(value="new_test_value")
+    response = client.put(
+        f"/api/widgets/test_widget/traits/value?session_id={session_id}",
+        json=trait_value.model_dump()
+    )
+    assert response.status_code == 200
+    
+    # Test valid action
+    response = client.post(
+        f"/api/widgets/test_widget/actions/test_action?session_id={session_id}",
+        json={"args": ["test_arg"], "kwargs": {"kwarg1": "test_kwarg"}}
+    )
+    assert response.status_code == 200
+    assert "Executed with test_arg and test_kwarg" in response.json()
+
+def _test_invalid_widget_action(client):
+    """Test error handling for invalid widget actions."""
+    # Get session ID
+    session_response = client.get("/api/widgets")
+    session_id = session_response.json()["session_id"]
+
+    # Test non-existent widget
+    response = client.post(
+        f"/api/widgets/non_existent/actions/test_action?session_id={session_id}",
+        json={"args": [], "kwargs": {}}
+    )
+    assert response.status_code == 404
+
+    # Test non-existent action
+    response = client.post(
+        f"/api/widgets/test_widget/actions/non_existent?session_id={session_id}",
+        json={"args": [], "kwargs": {}}
+    )
+    assert response.status_code == 404

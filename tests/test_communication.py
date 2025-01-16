@@ -36,7 +36,7 @@ def _process_2(communication_manager: CommunicationManager) -> None:
     """Help process that receives from main."""
     msg = communication_manager.to_app_instance.receive(timeout=1)
     print(f"Received message: {msg}")
-    #assert msg == msg_from_main
+    # assert msg == msg_from_main
     time.sleep(0.1)  # Give main process time to verify
 
 
@@ -64,8 +64,10 @@ def test_communication_manager_to_app() -> None:
     # Create communication manager with shared queues
     to_app_queue = Queue()
     from_app_queue = Queue()
-    
-    communication_manager = CommunicationManager(MPEvent(), to_app_queue, from_app_queue)
+
+    communication_manager = CommunicationManager(
+        MPEvent(), to_app_queue, from_app_queue
+    )
 
     # Start process
     process = Process(target=_process_2, args=(communication_manager,))
@@ -77,7 +79,7 @@ def test_communication_manager_to_app() -> None:
 
     # Wait for process to complete
     try:
-        process.join(timeout=5)  
+        process.join(timeout=5)
         print(f"Process exit code: {process.exitcode}")
         # Get output from process
         if process.exitcode is None:

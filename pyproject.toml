@@ -15,7 +15,7 @@ dependencies = [
     "uvicorn[standard]==0.32.1",
     "jinja2==3.1.4",
     "anywidget==0.9.13",
-    "numpy==2.1.3",
+    "numpy>=2.0.0",
     "pydantic==2.10.3"
 ]
 
@@ -32,7 +32,7 @@ dev = [
     "anywidget[dev]==0.9.13",
     "python-dotenv==1.0.1",
     "numerous-widgets",
-    "numpy==2.1.3",
+    "numpy>=2.0.0",
     "pytest==8.3.4",
     "ruff==0.6.4",
     "mypy==1.11.2",
