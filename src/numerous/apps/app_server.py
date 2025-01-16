@@ -186,7 +186,11 @@ async def get_widgets(request: Request) -> dict[str, Any]:
     else:
         app_definition = _app_definition
 
-    return {"session_id": session_id, "widgets": app_definition.widget_configs}
+    return {
+        "session_id": session_id,
+        "widgets": app_definition.widget_configs,
+        "logLevel": "DEBUG" if _app.state.config.dev else "ERROR",
+    }
 
 
 @_app.websocket("/ws/{client_id}/{session_id}")  # type: ignore[misc]
