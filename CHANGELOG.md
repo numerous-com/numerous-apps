@@ -2,6 +2,37 @@
 
 
 
+## v0.1.4 (2025-01-16)
+
+### Fix
+
+* fix(app): Enhance widget response with log level configuration
+
+- Updated the app server to include a `logLevel` field in the widget response, dynamically set to &#34;DEBUG&#34; or &#34;ERROR&#34; based on the development environment.
+- Modified the default log level in the JavaScript client from `DEBUG` to `ERROR` to align with the new logging strategy.
+- Cleaned up console logging in the widget configuration fetch function for improved clarity.
+
+These changes improve logging consistency and provide better control over log levels in the application. ([`b271dc9`](https://github.com/numerous-com/numerous-apps/commit/b271dc90642d4250c1fb35b117966bc223c8a4cd))
+
+* fix(app): Update widget action handling and message types
+
+- Changed the `numpy` dependency in `pyproject.toml` to allow for a wider range of versions.
+- Refactored the `e-e-test-script.py` to improve process management and ensure compatibility with the updated project structure.
+- Introduced a new `action` decorator in the app framework to facilitate the definition of widget actions.
+- Enhanced message handling in the app server to support new message types and improve error handling.
+- Updated the JavaScript client to handle new message types for widget updates and action responses.
+- Improved test coverage for widget actions and message handling, ensuring robust functionality and error management.
+
+These changes enhance the app&#39;s interactivity and maintainability, providing a more flexible framework for widget actions and communication. ([`e0a90ed`](https://github.com/numerous-com/numerous-apps/commit/e0a90ed37673512892285d7c7c898278c0ca6f42))
+
+* fix(app): Add API endpoints for app and widget trait management
+
+- Introduced new API endpoints to describe the app and retrieve/set widget trait values, enhancing the app&#39;s interactivity and usability.
+- Implemented the `describe_app` endpoint to return comprehensive app details, including widget descriptions and template context.
+- Added `get_trait_value` and `set_trait_value` endpoints for managing widget traits, with appropriate error handling for non-existent widgets and traits.
+- Updated models to include new data structures for app and widget descriptions, improving the overall architecture and maintainability of the codebase. ([`65b6517`](https://github.com/numerous-com/numerous-apps/commit/65b6517a027f3997cfeb2cba6d3b96f8aab87a28))
+
+
 ## v0.1.3 (2025-01-04)
 
 ### Fix
