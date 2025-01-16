@@ -231,7 +231,7 @@ def test_create_handler() -> None:
     # Verify correct message was sent
     mock_channel.send.assert_called_once_with(
         {
-            "type": "widget_update",
+            "type": "widget-update",
             "widget_id": "test_widget",
             "property": "value",
             "value": 42,

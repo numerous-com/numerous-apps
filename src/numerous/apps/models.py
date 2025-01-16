@@ -1,10 +1,24 @@
 """Models for the Numerous app framework."""
 
 import json
+from collections.abc import Sequence
+from enum import Enum
 from typing import Any
 
 import numpy as np
 from pydantic import BaseModel
+
+
+class MessageType(str, Enum):
+    """Message types for communication between server and client."""
+
+    WIDGET_UPDATE = "widget-update"
+    GET_STATE = "get-state"
+    GET_WIDGET_STATES = "get-widget-states"
+    ACTION_REQUEST = "action-request"
+    ACTION_RESPONSE = "action-response"
+    ERROR = "error"
+    INIT_CONFIG = "init-config"
 
 
 class NumpyJSONEncoder(json.JSONEncoder):
@@ -38,7 +52,7 @@ def encode_model(model: BaseModel) -> str:
 
 
 class WidgetUpdateMessage(BaseModel):
-    type: str = "widget_update"
+    type: str = MessageType.WIDGET_UPDATE.value
     widget_id: str
     property: str
     value: Any
@@ -60,11 +74,11 @@ class ErrorMessage(BaseModel):
 
 
 class GetStateMessage(BaseModel):
-    type: str = "get_state"
+    type: MessageType = MessageType.GET_STATE
 
 
 class GetWidgetStatesMessage(BaseModel):
-    type: str = "get_widget_states"
+    type: MessageType = MessageType.GET_WIDGET_STATES
     client_id: str
 
 
@@ -77,11 +91,30 @@ class TraitDescription(BaseModel):
     description: str | None = None
 
 
+class ActionParameter(BaseModel):
+    """Description of an action parameter."""
+
+    name: str
+    type: str
+    default: Any | None = None
+    is_optional: bool = False
+
+
+class ActionDescription(BaseModel):
+    """Description of a widget action."""
+
+    name: str
+    doc: str
+    parameters: list[ActionParameter]
+    return_type: str
+
+
 class WidgetDescription(BaseModel):
     """Description of a widget."""
 
     type: str
     traits: dict[str, TraitDescription]
+    actions: dict[str, ActionDescription]
 
 
 class TemplateDescription(BaseModel):
@@ -122,3 +155,45 @@ class SetTraitValue(BaseModel):
     """Model for setting a trait value."""
 
     value: Any
+
+
+class WidgetUpdateRequestMessage(BaseModel):
+    type: MessageType = MessageType.WIDGET_UPDATE
+    widget_id: str
+    property: str
+    value: Any
+
+
+class HandlerResponse(BaseModel):
+    """Base class for all handler responses."""
+
+    messages: Sequence[BaseModel]
+
+    @classmethod
+    def none(cls) -> "HandlerResponse":
+        """Create a HandlerResponse with no messages."""
+        return cls(messages=[])
+
+
+class ActionRequestMessage(BaseModel):
+    """Message for requesting an action to be executed."""
+
+    type: str = MessageType.ACTION_REQUEST.value
+    widget_id: str
+    action_name: str
+    args: tuple[Any, ...] | None = None
+    kwargs: dict[str, Any] | None = None
+    request_id: str
+    client_id: str | None = None
+
+
+class ActionResponseMessage(BaseModel):
+    """Message containing the response from an action execution."""
+
+    type: str = MessageType.ACTION_RESPONSE.value
+    widget_id: str
+    action_name: str
+    result: Any | None = None
+    error: str | None = None
+    client_id: str | None = None
+    request_id: str

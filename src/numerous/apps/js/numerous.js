@@ -256,34 +256,55 @@ class WebSocketManager {
             const message = JSON.parse(event.data);
             log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Received message:`, message);
             
-            if (message.type === 'error') {
-                log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error from backend:`, message);
-                const errorMessage = `Error: ${message.error_type}\n${message.message}\n\nTraceback:\n${message.traceback || 'No traceback available'}`;
-                this.showErrorModal(errorMessage);
-                return;
-            }
-            
-            const model = this.widgetModels.get(message.widget_id);
-            if (model) {
-                log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Found model for widget ${message.widget_id}`);
-                // Update the model without triggering a send back to server
-                
-                model.set(message.property, message.value, true);
-                
-                // Trigger the general 'change' event
-                //log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Triggering general change event`);
-                //model.trigger('change', {
-                //    property: message.property,
-                //    value: message.value
-                //});
-            } else {
-                log(LOG_LEVELS.WARN, `[WebSocketManager ${this.clientId}] No model found for widget ${message.widget_id}`);
+            // Handle all message types
+            switch (message.type) {
+                case 'error':
+                    log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error from backend:`, message);
+                    const errorMessage = `Error: ${message.error_type}\n${message.message}\n\nTraceback:\n${message.traceback || 'No traceback available'}`;
+                    this.showErrorModal(errorMessage);
+                    break;
+
+                case 'widget-update':
+                    // Handle widget updates from both actions and direct changes
+                    const model = this.widgetModels.get(message.widget_id);
+                    if (model) {
+                        log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Updating widget ${message.widget_id}: ${message.property} = ${message.value}`);
+                        // Update the model without triggering a send back to server
+                        model.set(message.property, message.value, true);
+                        
+                        // Also trigger a general update event that widgets can listen to
+                        model.trigger('update', {
+                            property: message.property,
+                            value: message.value
+                        });
+                    } else {
+                        log(LOG_LEVELS.WARN, `[WebSocketManager ${this.clientId}] No model found for widget ${message.widget_id}`);
+                    }
+                    break;
+
+                case 'action-response':
+                    log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Received action response:`, message);
+                    const actionModel = this.widgetModels.get(message.widget_id);
+                    if (actionModel) {
+                        if (message.error) {
+                            this.showErrorModal(message.error);
+                        } else {
+                            // Trigger specific action completion event
+                            actionModel.trigger(`action:${message.action_name}`, {
+                                result: message.result
+                            });
+                        }
+                    }
+                    break;
+
+                default:
+                    log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Unhandled message type: ${message.type}`);
             }
         };
 
         this.ws.onopen = () => {
             log(LOG_LEVELS.INFO, `[WebSocketManager] WebSocket connection established`);
-            this.ws.send(JSON.stringify({type: 'get_widget_states', client_id: this.clientId}));
+            this.ws.send(JSON.stringify({type: 'get-widget-states', client_id: this.clientId}));
         };
 
         this.ws.onclose = () => {
@@ -299,6 +320,7 @@ class WebSocketManager {
     sendUpdate(widgetId, property, value) {
         if (this.ws.readyState === WebSocket.OPEN) {
             const message = {
+                type: "widget-update",
                 widget_id: widgetId,
                 property: property,
                 value: value

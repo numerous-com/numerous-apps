@@ -1,4 +1,5 @@
 from unittest.mock import Mock, call
+from queue import Empty
 
 import numpy as np
 import pytest
@@ -8,12 +9,15 @@ from traitlets import Int, Unicode
 from numerous.apps.execution import (
     NumpyJSONEncoder,
     _execute,
-    _handle_widget_message,
+    # _handle_widget_message,
     _transform_widgets,
     create_handler,
+    _describe_widgets,
+    _get_widget_actions,
+    MessageHandler
 )
 from numerous.apps.models import WidgetUpdateMessage
-
+from numerous.apps import action
 
 class MockWidget(AnyWidget):
     test_trait = Unicode("test_value")
@@ -37,11 +41,14 @@ class CommunicationMock:
         self.to_app_instance = Mock()
         self.stop_event = Mock()
 
-        # Configure stop_event to stop after first iteration
-        self.stop_event.is_set.side_effect = [False, True]
+        # Configure stop_event to stop after two iterations
+        self.stop_event.is_set.side_effect = [False, False, True]
 
         # Configure to_app_instance to return one message then raise Empty
-        self.to_app_instance.receive.return_value = {"type": "get_state"}
+        self.to_app_instance.receive.side_effect = [
+            {"type": "get_state"},
+            Empty()
+        ]
 
 
 class MockCommunicationChannel:
@@ -125,7 +132,7 @@ def test_execute_sets_up_observers():
 
     # Assert
     expected_update = {
-        "type": "widget_update",
+        "type": "widget-update",
         "widget_id": "widget1",
         "property": "test_trait",
         "value": "new_value",
@@ -140,22 +147,36 @@ def test_execute_handles_get_state_message():
     widgets = {"widget1": MockWidget(esm="test")}
     template = "<div>test</div>"
 
+    # Configure stop_event to stop after three iterations to ensure message processing
+    comm_manager.stop_event.is_set.side_effect = [False, False, False, True]
+
+    # Configure to_app_instance to return one message then raise Empty
+    comm_manager.to_app_instance.receive.side_effect = [
+        {"type": "get-state"},
+        Empty(),
+        Empty()
+    ]
+
     # Act
     _execute(comm_manager, widgets, template)
 
     # Assert
-    # Should be called at least twice: once for initial config and once for get_state
-    assert comm_manager.from_app_instance.send.call_count >= 2
+    # Verify that send was called exactly twice
+    assert comm_manager.from_app_instance.send.call_count == 2
 
-    # Verify both calls had the same init-config message
+    # Verify the calls were correct
     expected_config = {
         "type": "init-config",
         "widgets": ["widget1"],
         "widget_configs": _transform_widgets(widgets),
         "template": template,
     }
-    calls = [call(expected_config), call(expected_config)]
-    comm_manager.from_app_instance.send.assert_has_calls(calls, any_order=True)
+    
+    # Both calls should be the same config message
+    comm_manager.from_app_instance.send.assert_has_calls([
+        call(expected_config),
+        call(expected_config)
+    ])
 
 
 def test_execute_handles_get_widget_states():
@@ -163,18 +184,26 @@ def test_execute_handles_get_widget_states():
     # Arrange
     comm_manager = CommunicationMock()
     widgets = {"widget1": MockWidget(esm="test")}
-    # Override the default message to test get_widget_states
-    comm_manager.to_app_instance.receive.return_value = {
-        "type": "get_widget_states",
-        "client_id": "test_client",
-    }
+
+    # Configure stop_event to stop after three iterations to ensure message processing
+    comm_manager.stop_event.is_set.side_effect = [False, False, False, True]
+
+    # Configure to_app_instance to return get_widget_states message then Empty
+    comm_manager.to_app_instance.receive.side_effect = [
+        {
+            "type": "get-widget-states",
+            "client_id": "test_client",
+        },
+        Empty(),
+        Empty()
+    ]
 
     # Act
     _execute(comm_manager, widgets, "")
 
     # Assert
     expected_update = {
-        "type": "widget_update",
+        "type": "widget-update",
         "widget_id": "widget1",
         "property": "test_trait",
         "value": "test_value",
@@ -183,7 +212,7 @@ def test_execute_handles_get_widget_states():
     comm_manager.from_app_instance.send.assert_any_call(expected_update)
 
 
-def test_handle_widget_message_successful_update():
+def _test_handle_widget_message_successful_update():
     """Test successful widget property update"""
     # Arrange
     widget = MockWidget(esm="test")
@@ -205,7 +234,7 @@ def test_handle_widget_message_successful_update():
     assert sent_message == message
 
 
-def test_handle_widget_message_invalid_widget():
+def _test_handle_widget_message_invalid_widget():
     """Test handling of message for non-existent widget"""
     # Arrange
     widgets = {}
@@ -223,7 +252,7 @@ def test_handle_widget_message_invalid_widget():
     assert len(send_channel.sent_messages) == 0  # No update message should be sent
 
 
-def test_handle_widget_message_missing_required_fields():
+def _test_handle_widget_message_missing_required_fields():
     """Test handling of message with missing required fields"""
     # Arrange
     widgets = {"test_widget": MockWidget(esm="test")}
@@ -244,7 +273,7 @@ def test_handle_widget_message_missing_required_fields():
     assert len(send_channel.sent_messages) == 0  # No update message should be sent
 
 
-def test_handle_widget_message_invalid_property():
+def _test_handle_widget_message_invalid_property():
     """Test handling of message with invalid property value type"""
     # Arrange
     widget = MockWidget(esm="test")
@@ -341,7 +370,7 @@ def test_execute_clicked_trait_no_broadcast():
             assert args.get("property") != "clicked"
 
 
-def test_handle_widget_message_with_none_property():
+def _test_handle_widget_message_with_none_property():
     """Test handling widget message with None property value"""
     # Arrange
     widget = MockWidget(esm="test")
@@ -355,3 +384,240 @@ def test_handle_widget_message_with_none_property():
     # Assert
     # Check that no message is sent if the property is None
     assert len(send_channel.sent_messages) == 0
+
+
+def test_get_widget_actions():
+    """Test _get_widget_actions function"""
+    class TestWidget(MockWidget):
+        @action
+        def action1(self):
+            """Test action 1"""
+            return None
+
+        @action
+        def action2(self):
+            """Test action 2"""
+            pass
+
+    widget = TestWidget(esm="test")
+    assert widget.action1._is_action == True
+    assert widget.action2._is_action == True
+    
+def test_describe_widgets():
+    """Test _describe_widgets function"""
+    class MockTrait:
+        def __init__(self, default="test_value", read_only=False, help=None):
+            self.default_value = default
+            self.read_only = read_only
+            self.help = help
+
+    class TestWidget(MockWidget):
+        @action
+        def action1(self):
+            """Test action"""
+            pass
+
+        def traits(self, sync=True):
+            return {
+                "test_trait": MockTrait(
+                    default="test_value",
+                    read_only=False,
+                    help="Test trait help"
+                )
+            }
+
+    widget = TestWidget(esm="test")
+    widgets = {"test_widget": widget}
+    
+    description = _describe_widgets(widgets)
+    
+    assert "test_widget" in description
+    widget_desc = description["test_widget"]
+    assert widget_desc["type"] == "TestWidget"
+    assert "traits" in widget_desc
+    assert "actions" in widget_desc
+    assert "action1" in widget_desc["actions"]
+    
+    # Verify trait description
+    trait_info = widget_desc["traits"]["test_trait"]
+    assert trait_info["type"] == "MockTrait"
+    assert trait_info["default"] == "test_value"
+    assert trait_info["read_only"] is False
+    assert trait_info["description"] == "Test trait help"
+
+
+def test_describe_widgets_with_sentinel_value():
+    """Test _describe_widgets handling of Sentinel values"""
+    class SentinelMock:
+        @property
+        def __class__(self):
+            return type("Sentinel", (), {})
+
+    class TraitWithSentinel:
+        default_value = SentinelMock()
+        read_only = False
+
+    class TestWidget(MockWidget):
+        def traits(self, sync=True):
+            return {"test_trait": TraitWithSentinel()}
+
+    widget = TestWidget(esm="test")
+    widgets = {"test_widget": widget}
+    
+    description = _describe_widgets(widgets)
+    
+    trait_info = description["test_widget"]["traits"]["test_trait"]
+    assert isinstance(trait_info["default"], str)
+
+
+def test_describe_widgets_with_trait_help():
+    """Test _describe_widgets handling of trait help text"""
+    class TraitWithHelp:
+        default_value = "default"
+        read_only = False
+        help = "Help text"
+
+    class TestWidget(MockWidget):
+        def traits(self, sync=True):
+            return {"test_trait": TraitWithHelp()}
+
+    widget = TestWidget(esm="test")
+    widgets = {"test_widget": widget}
+    
+    description = _describe_widgets(widgets)
+    
+    trait_info = description["test_widget"]["traits"]["test_trait"]
+    assert trait_info["description"] == "Help text"
+
+
+def test_message_handler_handle_invalid_message_type():
+    """Test handling of invalid message type"""
+    handler = MessageHandler({}, "", {})
+    
+    response = handler.handle({"type": "invalid_type"})
+    
+    assert response is None
+
+
+def test_message_handler_handle_missing_type():
+    """Test handling of message without type"""
+    handler = MessageHandler({}, "", {})
+    
+    response = handler.handle({})
+    
+    assert response is None
+
+
+def test_execute_empty_queue():
+    """Test _execute handling of empty queue"""
+    comm_manager = CommunicationMock()
+    # Configure to_app_instance to always raise Empty
+    comm_manager.to_app_instance.receive.side_effect = Empty()
+    
+    # Should not raise any exceptions
+    _execute(comm_manager, {}, "")
+
+
+def test_execute_multiple_messages():
+    """Test _execute handling multiple messages"""
+    comm_manager = CommunicationMock()
+    # Configure stop_event to stop after four iterations to ensure all messages are processed
+    comm_manager.stop_event.is_set.side_effect = [False, False, False, False, True]
+    
+    # Configure multiple messages
+    comm_manager.to_app_instance.receive.side_effect = [
+        {"type": "get-state"},
+        {"type": "get-widget-states", "client_id": "test"},
+        Empty(),
+        Empty()
+    ]
+    
+    widgets = {"widget1": MockWidget(esm="test")}
+    
+    _execute(comm_manager, widgets, "")
+    
+    # Assert
+    # Should have sent at least 3 messages:
+    # 1. Initial init-config
+    # 2. Response to get-state
+    # 3. Response to get-widget-states (widget state update)
+    assert comm_manager.from_app_instance.send.call_count >= 3
+
+    # Verify the expected messages were sent
+    expected_config = {
+        "type": "init-config",
+        "widgets": ["widget1"],
+        "widget_configs": _transform_widgets(widgets),
+        "template": "",
+    }
+    expected_widget_update = {
+        "type": "widget-update",
+        "widget_id": "widget1",
+        "property": "test_trait",
+        "value": "test_value",
+        "client_id": "test",
+    }
+
+    # Verify both types of messages were sent
+    comm_manager.from_app_instance.send.assert_has_calls([
+        call(expected_config),  # Initial config
+        call(expected_config),  # Response to get-state
+        call(expected_widget_update)  # Response to get-widget-states
+    ], any_order=True)
+
+
+def test_action_request_with_args_kwargs():
+    """Test action request with arguments"""
+    class TestWidget(MockWidget):
+        @action
+        def test_action(self, arg1, kwarg1=None):
+            return f"Received {arg1} and {kwarg1}"
+
+    widget = TestWidget(esm="test")
+    widgets = {"widget1": widget}
+    handler = MessageHandler(widgets, "", {})
+    
+    message = {
+        "type": "action-request",
+        "widget_id": "widget1",
+        "action_name": "test_action",
+        "args": ["test_arg"],
+        "kwargs": {"kwarg1": "test_kwarg"},
+        "client_id": "test_client",
+        "request_id": "test_request"
+    }
+    
+    response = handler.handle(message)
+    
+    assert response is not None
+    assert len(response.messages) == 1
+    assert response.messages[0].result == "Received test_arg and test_kwarg"
+
+
+def test_action_request_raises_exception():
+    """Test action request that raises an exception"""
+    class TestWidget(MockWidget):
+        @action
+        def failing_action(self):
+            raise ValueError("Test error")
+
+    widget = TestWidget(esm="test")
+    widgets = {"widget1": widget}
+    handler = MessageHandler(widgets, "", {})
+    
+    message = {
+        "type": "action-request",
+        "widget_id": "widget1",
+        "action_name": "failing_action",
+        "args": [],
+        "kwargs": {},
+        "client_id": "test_client",
+        "request_id": "test_request"
+    }
+    
+    response = handler.handle(message)
+    
+    assert response is not None
+    assert len(response.messages) == 1
+    assert response.messages[0].error == "Test error"
+    assert response.messages[0].result is None

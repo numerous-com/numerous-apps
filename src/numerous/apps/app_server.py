@@ -7,6 +7,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from inspect import getmembers
 from pathlib import Path
 from typing import Any
 
@@ -23,15 +24,18 @@ from starlette.websockets import WebSocketDisconnect
 from .builtins import ParentVisibility
 from .execution import _describe_widgets
 from .models import (
+    ActionRequestMessage,
+    ActionResponseMessage,
     AppDescription,
     AppInfo,
     ErrorMessage,
-    GetWidgetStatesMessage,
     InitConfigMessage,
+    MessageType,
     SetTraitValue,
     TemplateDescription,
     TraitValue,
     WidgetUpdateMessage,
+    WidgetUpdateRequestMessage,
     encode_model,
 )
 from .server import (
@@ -173,10 +177,16 @@ async def get_widgets(request: Request) -> dict[str, Any]:
         load_config=True,
     )
 
-    app_definition = _session["config"]
-    widget_configs = app_definition.get("widget_configs", {})
+    _app_definition: dict[str, Any] | InitConfigMessage = _session["config"]
 
-    return {"session_id": session_id, "widgets": widget_configs}
+    app_definition: InitConfigMessage
+    # Convert to InitConfigMessage if it's not already
+    if isinstance(_app_definition, dict):
+        app_definition = InitConfigMessage(**_app_definition)
+    else:
+        app_definition = _app_definition
+
+    return {"session_id": session_id, "widgets": app_definition.widget_configs}
 
 
 @_app.websocket("/ws/{client_id}/{session_id}")  # type: ignore[misc]
@@ -211,7 +221,7 @@ async def websocket_endpoint(
     async def send_messages() -> None:
         try:
             while True:
-                await handle_send_message(websocket, client_id, session)
+                await handle_send_message(client_id, session)
         except (asyncio.CancelledError, WebSocketDisconnect):
             logger.debug(f"Send task cancelled for client {client_id}")
             raise
@@ -227,47 +237,88 @@ async def websocket_endpoint(
 async def handle_receive_message(
     websocket: WebSocket, client_id: str, session: SessionData
 ) -> None:
-    try:
-        data = await websocket.receive_text()
-        message = json.loads(data)
-        logger.debug(f"Received message from client {client_id}: {message}")
+    message = await websocket.receive_json()
 
-        if message.get("type") == "get_widget_states":
-            msg = GetWidgetStatesMessage(**message)
-            session["execution_manager"].communication_manager.to_app_instance.send(
-                msg.model_dump()
-            )
-        else:
-            session["execution_manager"].communication_manager.to_app_instance.send(
-                message
-            )
-    except WebSocketDisconnect:
-        logger.debug(f"WebSocket disconnected for client {client_id}")
-        raise
+    # First check if we have a message type
+    message_type = message.get("type")
+
+    if message_type in ["get-state", "get-widget-states"]:
+        # These messages don't need widget_id, just forward them to the app instance
+        session["execution_manager"].communication_manager.to_app_instance.send(
+            {"type": "get-widget-states", "client_id": client_id}
+        )
+        return
+
+    # For messages that require widget_id
+    if "widget_id" not in message:
+        logger.error(f"Received message without widget_id: {message}")
+        return
+
+    # Continue with the existing logic for messages that have widget_id
+    session["execution_manager"].communication_manager.to_app_instance.send(
+        {
+            "type": message_type,  # Use the already extracted type
+            "widget_id": message["widget_id"],
+            "property": message.get("property"),
+            "value": message.get("value"),
+            "client_id": client_id,
+            "action_name": message.get("action_name"),
+            "args": message.get("args", []),
+            "kwargs": message.get("kwargs", {}),
+        }
+    )
 
 
-async def handle_send_message(
-    websocket: WebSocket, client_id: str, session: SessionData
-) -> None:
+async def handle_send_message(client_id: str, session: SessionData) -> None:
     try:
         if not session[
             "execution_manager"
         ].communication_manager.from_app_instance.empty():
+            # Get the message once and distribute to all clients in the session
             response = session[
                 "execution_manager"
             ].communication_manager.from_app_instance.receive()
-            logger.debug(f"Sending message to client {client_id}: {response}")
+            logger.debug(f"Received message from app instance: {response}")
 
-            if response.get("type") == "widget_update":
-                update_message = WidgetUpdateMessage(**response)
-                await websocket.send_text(encode_model(update_message))
+            # Find all connected clients for this session
+            session_id = next(
+                sid
+                for sid, sdata in _app.state.config.sessions.items()
+                if sdata == session
+            )
+            session_connections = _app.state.config.connections.get(session_id, {})
+
+            # Use Union type for message
+            message: (
+                WidgetUpdateMessage
+                | InitConfigMessage
+                | ErrorMessage
+                | ActionResponseMessage
+            )
+            if response.get("type") == MessageType.WIDGET_UPDATE.value:
+                message = WidgetUpdateMessage(**response)
             elif response.get("type") == "init-config":
-                init_config_message = InitConfigMessage(**response)
-                await websocket.send_text(encode_model(init_config_message))
+                message = InitConfigMessage(**response)
             elif response.get("type") == "error":
-                error_message = ErrorMessage(**response)
-                if _app.state.config.dev:
-                    await websocket.send_text(encode_model(error_message))
+                message = ErrorMessage(**response)
+            elif response.get("type") == MessageType.ACTION_RESPONSE.value:
+                message = ActionResponseMessage(**response)
+            else:
+                logger.warning(f"Unknown message type: {response.get('type')}")
+                return
+
+            encoded_message = encode_model(message)
+
+            # Send to all connected clients for this session
+            for client_ws in session_connections.values():
+                try:
+                    await client_ws.send_text(encoded_message)
+                except WebSocketDisconnect:
+                    logger.debug(
+                        "Failed to send to a client - they may be disconnected"
+                    )
+                    continue
+
         await asyncio.sleep(0.01)
     except WebSocketDisconnect:
         logger.debug(f"WebSocket disconnected for client {client_id}")
@@ -475,22 +526,145 @@ async def set_trait_value(
             detail=f"Trait '{trait_name}' not found on widget '{widget_id}'",
         )
 
-    converted_value = trait_value.value
+    # Create widget update message using Pydantic model
+    update_message = WidgetUpdateRequestMessage(
+        type=MessageType.WIDGET_UPDATE,
+        widget_id=widget_id,
+        property=trait_name,
+        value=trait_value.value,
+    )
 
-    # Send the converted value to widget using the communication manager
+    # Send the message using the communication manager
     session["execution_manager"].communication_manager.to_app_instance.send(
-        {
-            "type": "widget_update",
-            "widget_id": widget_id,
-            "property": trait_name,
-            "value": converted_value,
-        }
+        update_message.model_dump()
     )
 
     # Return the updated trait value
     return TraitValue(
         widget_id=widget_id,
         trait=trait_name,
-        value=converted_value,
+        value=trait_value.value,
         session_id=session_id,
     )
+
+
+async def _handle_action_response(
+    response_queue: asyncio.Queue,  # type: ignore[type-arg]
+    request_id: str,  # noqa: ARG001
+) -> Any:  # noqa: ANN401
+    """Handle the response from an action execution."""
+    try:
+        response = await asyncio.wait_for(response_queue.get(), timeout=10)
+        action_response = ActionResponseMessage(**response)
+        if action_response.error:
+            raise HTTPException(status_code=500, detail=action_response.error)
+        return action_response.result  # noqa: TRY300
+    except TimeoutError as err:
+        raise HTTPException(
+            status_code=504,
+            detail="Timeout waiting for action response",
+        ) from err
+
+
+class MockWebSocket:
+    """Mock WebSocket for handling action responses."""
+
+    def __init__(self, response_queue: asyncio.Queue, request_id: str) -> None:  # type: ignore[type-arg]
+        self.response_queue = response_queue
+        self.request_id = request_id
+
+    async def send_text(self, message: str) -> None:
+        """Send a message to the mock WebSocket."""
+        try:
+            data = json.loads(message)
+            if (
+                data.get("type") == MessageType.ACTION_RESPONSE.value
+                and data.get("request_id") == self.request_id
+            ):
+                await self.response_queue.put(data)
+        except json.JSONDecodeError:
+            pass
+
+
+@_app.post("/api/widgets/{widget_id}/actions/{action_name}")  # type: ignore[misc]
+async def execute_widget_action(
+    widget_id: str,
+    action_name: str,
+    session_id: str,
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+) -> Any:  # noqa: ANN401
+    """Execute an action on a widget."""
+    session = _get_session(
+        _app.state.config.allow_threaded,
+        session_id,
+        _app.state.config.base_dir,
+        _app.state.config.module_path,
+        _app.state.config.template,
+        _app.state.config.sessions,
+    )
+
+    if widget_id not in _app.widgets:
+        raise HTTPException(status_code=404, detail=f"Widget '{widget_id}' not found")
+
+    # Create a unique request ID and client ID
+    request_id = str(uuid.uuid4())
+    client_id = f"action_client_{request_id}"
+
+    # Create response queue for this specific request
+    response_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    # Register this client in the connections
+    if session_id not in _app.state.config.connections:
+        _app.state.config.connections[session_id] = {}
+
+    # Create a WebSocket connection for this request
+    _app.state.config.connections[session_id][client_id] = MockWebSocket(
+        response_queue, request_id
+    )
+
+    try:
+        # Create and send the action request message
+        action_request = ActionRequestMessage(
+            type=MessageType.ACTION_REQUEST.value,
+            widget_id=widget_id,
+            action_name=action_name,
+            args=tuple(args) if args is not None else None,
+            kwargs=kwargs or {},
+            request_id=request_id,
+            client_id=client_id,
+        )
+
+        # Send the message using the communication manager
+        session["execution_manager"].communication_manager.to_app_instance.send(
+            action_request.model_dump()
+        )
+
+        # Wait for response with timeout
+        try:
+            response = await asyncio.wait_for(response_queue.get(), timeout=10)
+            action_response = ActionResponseMessage(**response)
+            if action_response.error:
+                raise HTTPException(status_code=500, detail=action_response.error)
+            return action_response.result  # noqa: TRY300
+        except TimeoutError as e:
+            raise HTTPException(
+                status_code=504, detail="Timeout waiting for action response"
+            ) from e
+
+    finally:
+        # Clean up the temporary connection
+        if session_id in _app.state.config.connections:
+            _app.state.config.connections[session_id].pop(client_id, None)
+
+
+def _get_widget_actions(widget: AnyWidget) -> dict[str, dict[str, Any]]:
+    """Get all actions defined on a widget."""
+    actions = {}
+    for name, member in getmembers(widget.__class__):
+        if hasattr(member, "_is_action"):  # Check for action decorator
+            actions[name] = {
+                "name": name,
+                "doc": member.__doc__ or "",
+            }
+    return actions
