@@ -6,7 +6,7 @@ const LOG_LEVELS = {
     ERROR: 3,
     NONE: 4
 };
-let currentLogLevel = LOG_LEVELS.DEBUG; // Default log level
+let currentLogLevel = LOG_LEVELS.ERROR; // Default log level
 
 // Add this logging utility function
 function log(level, ...args) {
@@ -132,8 +132,7 @@ async function fetchWidgetConfigs() {
         const response = await fetch(`/api/widgets?session_id=${sessionId}`);
 
         const data = await response.json();
-        console.log("Data:", data);
-        
+
         sessionStorage.setItem('session_id', data.session_id);
         sessionId = data.session_id;
 
