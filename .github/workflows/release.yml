@@ -109,7 +109,7 @@ jobs:
         run: |
           # Run version check and store output
           OUTPUT=$(semantic-release version --no-commit --no-tag --no-push --no-changelog)
-          if [[ "$OUTPUT" =~ "No release will be made" ]]; then
+          if echo "$OUTPUT" | grep -q "No release will be made"; then
             echo "VERSION_CHANGED=false" >> "$GITHUB_OUTPUT"
           else
             echo "VERSION_CHANGED=true" >> "$GITHUB_OUTPUT"
@@ -117,11 +117,13 @@ jobs:
       - name: Debug output
         run: |
           echo "Version changed? ${{ steps.check-version.outputs.VERSION_CHANGED }}"
+          echo "Raw output was:"
+          echo "${{ steps.check-version.outputs.VERSION_CHANGED }}"
       - name: Create release
-        if: steps.check-version.outputs.VERSION_CHANGED == 'true'
+        if: ${{ steps.check-version.outputs.VERSION_CHANGED == 'true' }}
         run: |
           semantic-release version --commit --tag --push
           semantic-release publish
       - name: Publish package distributions to PyPI
-        if: steps.check-version.outputs.VERSION_CHANGED == 'true'
+        if: ${{ steps.check-version.outputs.VERSION_CHANGED == 'true' }}
         uses: pypa/gh-action-pypi-publish@release/v1
