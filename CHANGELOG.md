@@ -2,6 +2,21 @@
 
 
 
+## v0.1.5 (2025-01-19)
+
+### Fix
+
+* fix(app): Enhance session management and UI feedback
+
+- Added support for session error handling in the app server, including a new `SessionErrorMessage` model to communicate session issues.
+- Implemented a session lost banner in the UI to inform users when their session has expired, improving user experience and feedback.
+- Introduced a splash screen to provide visual feedback during loading, enhancing the overall application responsiveness.
+- Updated the JavaScript client to handle new message types related to session management and improve connection status handling.
+- Refactored the session management logic to utilize a global session manager, streamlining session lifecycle management and cleanup.
+
+These changes improve the robustness of session handling and enhance user interaction with the application. ([`a0a8312`](https://github.com/numerous-com/numerous-apps/commit/a0a8312906d07f1b3d734c8a9322f6c7512ab7fc))
+
+
 ## v0.1.4 (2025-01-16)
 
 ### Fix
@@ -31,6 +46,32 @@ These changes enhance the app&#39;s interactivity and maintainability, providing
 - Implemented the `describe_app` endpoint to return comprehensive app details, including widget descriptions and template context.
 - Added `get_trait_value` and `set_trait_value` endpoints for managing widget traits, with appropriate error handling for non-existent widgets and traits.
 - Updated models to include new data structures for app and widget descriptions, improving the overall architecture and maintainability of the codebase. ([`65b6517`](https://github.com/numerous-com/numerous-apps/commit/65b6517a027f3997cfeb2cba6d3b96f8aab87a28))
+
+* fix(app): Enhance widget response with log level configuration
+
+- Updated the app server to include a `logLevel` field in the widget response, dynamically set to &#34;DEBUG&#34; or &#34;ERROR&#34; based on the development environment.
+- Modified the default log level in the JavaScript client from `DEBUG` to `ERROR` to align with the new logging strategy.
+- Cleaned up console logging in the widget configuration fetch function for improved clarity.
+
+These changes improve logging consistency and provide better control over log levels in the application. ([`f65f93f`](https://github.com/numerous-com/numerous-apps/commit/f65f93f22f3d55d5059de7b17ea6c9f01674b0ec))
+
+* fix(app): Update widget action handling and message types
+
+- Changed the `numpy` dependency in `pyproject.toml` to allow for a wider range of versions.
+- Refactored the `e-e-test-script.py` to improve process management and ensure compatibility with the updated project structure.
+- Introduced a new `action` decorator in the app framework to facilitate the definition of widget actions.
+- Enhanced message handling in the app server to support new message types and improve error handling.
+- Updated the JavaScript client to handle new message types for widget updates and action responses.
+- Improved test coverage for widget actions and message handling, ensuring robust functionality and error management.
+
+These changes enhance the app&#39;s interactivity and maintainability, providing a more flexible framework for widget actions and communication. ([`bb61008`](https://github.com/numerous-com/numerous-apps/commit/bb610081d4c3220f6d37b29b301f2e348e71e6bc))
+
+* fix(app): Add API endpoints for app and widget trait management
+
+- Introduced new API endpoints to describe the app and retrieve/set widget trait values, enhancing the app&#39;s interactivity and usability.
+- Implemented the `describe_app` endpoint to return comprehensive app details, including widget descriptions and template context.
+- Added `get_trait_value` and `set_trait_value` endpoints for managing widget traits, with appropriate error handling for non-existent widgets and traits.
+- Updated models to include new data structures for app and widget descriptions, improving the overall architecture and maintainability of the codebase. ([`11db5e8`](https://github.com/numerous-com/numerous-apps/commit/11db5e8bd8c431d0fe1ed78705e00f5199fde1b1))
 
 
 ## v0.1.3 (2025-01-04)
