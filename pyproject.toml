@@ -52,6 +52,7 @@ dev = [
     "panel==1.5.5",
     "pytest-cov==4.1.0",
     "httpx==0.28.1",
+    "pytest-asyncio==0.25.2",
 ]
 
 [tool.poetry.dependencies]
@@ -149,7 +150,9 @@ mark-parentheses = false
 ignore_missing_imports = true
 exclude = ["examples", "e-e-test"]
 
+
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 addopts = "--cov=numerous.apps --cov-report=term-missing --cov-report=html"
 testpaths = ["tests"]
 

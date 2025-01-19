@@ -1,0 +1,82 @@
+<style>
+.session-lost-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 80px;
+    background-color: #fff3cd;
+    border-bottom: 1px solid #ffeeba;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 9999;
+    transition: transform 0.3s ease-out;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 0 12px;
+}
+
+.session-lost-banner.hidden {
+    transform: translateY(-100%);
+}
+
+.banner-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: #856404;
+    flex-grow: 1;
+    justify-content: center;
+}
+
+.warning-icon {
+    font-size: 20px;
+}
+
+.banner-actions {
+    display: flex;
+    gap: 8px;
+    padding: 0 12px;
+}
+
+.banner-button {
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.reload-btn {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: white;
+}
+
+.dismiss-btn {
+    background-color: transparent;
+    border-color: #6c757d;
+    color: #6c757d;
+}
+
+.banner-button:hover {
+    opacity: 0.9;
+}
+</style>
+
+<div id="session-lost-banner" class="session-lost-banner hidden">
+    <div class="banner-content">
+        <span class="warning-icon">⚠️</span>
+        <span>Session has been lost. All unsaved changes will be lost.</span>
+    </div>
+    <div class="banner-actions">
+        <button class="banner-button reload-btn" onclick="window.location.reload()">
+            Reload Page
+        </button>
+        <button class="banner-button dismiss-btn" onclick="dismissSessionLostBanner()">
+            Dismiss
+        </button>
+    </div>
+</div> 

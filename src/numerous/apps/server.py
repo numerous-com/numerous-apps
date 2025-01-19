@@ -1,10 +1,11 @@
 """Module for running the server."""
 
 import importlib
-import json
 import logging
 import sys
+import time
 import traceback
+import uuid
 from collections.abc import Callable
 from importlib.machinery import ModuleSpec
 from pathlib import Path
@@ -21,9 +22,8 @@ from .communication import QueueCommunicationManager as CommunicationManager
 from .execution import _execute
 from .models import (
     ErrorMessage,
-    GetStateMessage,
-    MessageType,
 )
+from .session_management import GlobalSessionManager, SessionId, SessionManager
 
 
 class Jinja2Templates(Environment):  # type: ignore[misc]
@@ -46,21 +46,24 @@ class SessionData(TypedDict):
     config: dict[str, Any]
 
 
-def _get_session(
+global_session_manager = GlobalSessionManager()
+
+
+async def _get_session(
     allow_threaded: bool,
     session_id: str,
     base_dir: str,
     module_path: str,
     template: str,
-    sessions: dict[str, SessionData],
-    load_config: bool = False,
-) -> SessionData:
+    allow_create: bool = True,
+) -> SessionManager:
     # Generate a session ID if one doesn't exist
-
-    if session_id not in sessions:
-        logger.info(
-            f"Creating new session {session_id}. Total sessions: {len(sessions) + 1}"
-        )
+    if session_id in ["", "null", "undefined"] or (
+        not global_session_manager.has_session(SessionId(session_id))
+    ):
+        if not allow_create:
+            raise ValueError("Session ID not found.")
+        session_id = str(uuid.uuid4())
 
         if allow_threaded:
             execution_manager: (
@@ -76,32 +79,20 @@ def _get_session(
             )
         execution_manager.start(str(base_dir), module_path, template)
 
-        sessions[session_id] = {"execution_manager": execution_manager, "config": {}}
-        _session = sessions[session_id]
-
-    elif load_config:
-        _session = sessions[session_id]
-        _session["execution_manager"].communication_manager.to_app_instance.send(
-            GetStateMessage(type=MessageType.GET_STATE).model_dump()
+        # Create session in global manager and store in local sessions dict
+        session_manager = global_session_manager.create_session(
+            SessionId(session_id), execution_manager
         )
+        sessions = global_session_manager._sessions  # noqa: SLF001
+        logger.info(
+            f"Creating new session {session_id}.\
+                Total sessions: \
+                    {len(sessions) + 1}"
+        )
+    else:
+        session_manager = global_session_manager.get_session(SessionId(session_id))
 
-    if load_config:
-        # Get the app definition
-        app_definition = _session[
-            "execution_manager"
-        ].communication_manager.from_app_instance.receive(timeout=10)
-
-        # Check message type
-        if app_definition.get("type") == "init-config":
-            # deserialize the config["defaults"]
-            for config in app_definition["widget_configs"].values():
-                if "defaults" in config:
-                    config["defaults"] = json.loads(config["defaults"])
-
-        elif app_definition.get("type") != "error":
-            raise AppInitError("Invalid message type. Expected 'init-config'.")
-        sessions[session_id]["config"] = app_definition
-    return sessions[session_id]
+    return session_manager
 
 
 def _get_template(template: str, templates: Jinja2Templates) -> str:
@@ -230,3 +221,26 @@ def _check_module_spec(spec: ModuleSpec, module_string: str) -> None:
 def _check_module_file_exists(module_string: str) -> None:
     if not Path(module_string).exists():
         raise FileNotFoundError(f"Module file not found: {module_string}")
+
+
+class FilteredReceiver:
+    """Helper class to receive messages with filtering."""
+
+    def __init__(
+        self, queue: CommunicationChannel, filter_func: Callable[[dict[str, Any]], bool]
+    ) -> None:
+        self.queue = queue
+        self.filter_func = filter_func
+
+    def receive(self, timeout: float | None = None) -> dict[str, Any]:
+        """Receive a message that matches the filter criteria."""
+        start_time = time.monotonic()
+        while timeout is None or (time.monotonic() - start_time) < timeout:
+            if not self.queue.empty():
+                message = self.queue.receive()
+                if self.filter_func(message):
+                    if not isinstance(message, dict):
+                        raise ValueError("Message is not a dictionary")
+                    return message
+            time.sleep(0.01)
+        raise TimeoutError("Timeout waiting for matching message")

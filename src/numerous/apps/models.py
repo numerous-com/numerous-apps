@@ -19,6 +19,7 @@ class MessageType(str, Enum):
     ACTION_RESPONSE = "action-response"
     ERROR = "error"
     INIT_CONFIG = "init-config"
+    SESSION_ERROR = "session-error"
 
 
 class NumpyJSONEncoder(json.JSONEncoder):
@@ -197,3 +198,15 @@ class ActionResponseMessage(BaseModel):
     error: str | None = None
     client_id: str | None = None
     request_id: str
+
+
+class SessionErrorMessage(BaseModel):
+    """Message indicating a session error."""
+
+    type: str = MessageType.SESSION_ERROR.value
+    message: str = "Session not found or expired"
+
+
+WebSocketMessage = (
+    WidgetUpdateMessage | ActionResponseMessage | InitConfigMessage | ErrorMessage
+)

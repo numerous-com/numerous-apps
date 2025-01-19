@@ -29,11 +29,14 @@ from .models import (
     AppDescription,
     AppInfo,
     ErrorMessage,
+    GetStateMessage,
     InitConfigMessage,
     MessageType,
+    SessionErrorMessage,
     SetTraitValue,
     TemplateDescription,
     TraitValue,
+    WebSocketMessage,
     WidgetUpdateMessage,
     WidgetUpdateRequestMessage,
     encode_model,
@@ -45,6 +48,7 @@ from .server import (
     _get_template,
     _load_main_js,
 )
+from .session_management import SessionManager
 
 
 class AppProcessError(Exception):
@@ -149,45 +153,53 @@ async def home(request: Request) -> Response:
             "These widgets will not be displayed."
         )
 
-    # Load the error modal template
+    # Load the error modal, splash screen, and session lost banner templates
     error_modal = templates.get_template("error_modal.html.j2").render()
+    splash_screen = templates.get_template("splash_screen.html.j2").render()
+    session_lost_banner = templates.get_template("session_lost_banner.html.j2").render()
 
-    # Modify the template content to include the error modal
+    # Modify the template content to include all components
     modified_html = template_content.replace(
-        "</body>", f'{error_modal}<script src="/numerous.js"></script></body>'
+        "</body>",
+        f'{splash_screen}{error_modal}{session_lost_banner}\
+            <script src="/numerous.js"></script></body>',
     )
 
-    return HTMLResponse(content=modified_html)
+    return HTMLResponse(modified_html)
 
 
 @_app.get("/api/widgets")  # type: ignore[misc]
 async def get_widgets(request: Request) -> dict[str, Any]:
     session_id = request.query_params.get("session_id")
-    if session_id in {"undefined", "null", None}:
-        session_id = str(uuid.uuid4())
-    logger.info(f"Session ID: {session_id}")
-
-    _session = _get_session(
+    session = await _get_session(
         _app.state.config.allow_threaded,
         session_id,
         _app.state.config.base_dir,
         _app.state.config.module_path,
         _app.state.config.template,
-        _app.state.config.sessions,
-        load_config=True,
     )
 
-    _app_definition: dict[str, Any] | InitConfigMessage = _session["config"]
+    logger.info(f"Session ID: {session_id}")
 
-    app_definition: InitConfigMessage
+    _app_definition = await session.send(
+        GetStateMessage(type=MessageType.GET_STATE).model_dump(),
+        wait_for_response=True,
+        timeout_seconds=10,
+        message_types=[MessageType.INIT_CONFIG],
+    )
+
+    if _app_definition is None:
+        raise HTTPException(status_code=500, detail="No app definition request failed.")
+
+    for config in _app_definition["widget_configs"].values():
+        if "defaults" in config:
+            config["defaults"] = json.loads(config["defaults"])
+
     # Convert to InitConfigMessage if it's not already
-    if isinstance(_app_definition, dict):
-        app_definition = InitConfigMessage(**_app_definition)
-    else:
-        app_definition = _app_definition
+    app_definition = InitConfigMessage(**_app_definition)
 
     return {
-        "session_id": session_id,
+        "session_id": session.session_id,
         "widgets": app_definition.widget_configs,
         "logLevel": "DEBUG" if _app.state.config.dev else "ERROR",
     }
@@ -200,19 +212,31 @@ async def websocket_endpoint(
     await websocket.accept()
     logger.debug(f"New WebSocket connection from client {client_id}")
 
+    try:
+        session = await _get_session(
+            allow_threaded=_app.state.config.allow_threaded,
+            session_id=session_id,
+            base_dir=_app.state.config.base_dir,
+            module_path=_app.state.config.module_path,
+            template=_app.state.config.template,
+            allow_create=False,
+        )
+    except ValueError as e:
+        logger.warning(f"Session not found for {session_id}: {e!s}")
+        # Send session error message before closing
+        error_msg = SessionErrorMessage()
+        try:
+            await websocket.send_text(encode_model(error_msg))
+
+        except (ValueError, TypeError, WebSocketDisconnect) as e:
+            logger.exception("Failed to send session error message.")
+
+        return
+
     if session_id not in _app.state.config.connections:
         _app.state.config.connections[session_id] = {}
 
     _app.state.config.connections[session_id][client_id] = websocket
-
-    session = _get_session(
-        _app.state.config.allow_threaded,
-        session_id,
-        _app.state.config.base_dir,
-        _app.state.config.module_path,
-        _app.state.config.template,
-        _app.state.config.sessions,
-    )
 
     async def receive_messages() -> None:
         try:
@@ -223,9 +247,20 @@ async def websocket_endpoint(
             raise
 
     async def send_messages() -> None:
+        """Handle sending messages to websocket clients."""
         try:
-            while True:
-                await handle_send_message(client_id, session)
+            # Register callback for all messages
+            handle = session.register_callback(
+                callback=lambda msg: handle_websocket_message(websocket, msg)
+            )
+
+            try:
+                # Wait indefinitely until cancelled or disconnected
+                await asyncio.Future()  # This future will never complete
+            finally:
+                # Clean up callback when done
+                session.deregister_callback(handle)
+
         except (asyncio.CancelledError, WebSocketDisconnect):
             logger.debug(f"Send task cancelled for client {client_id}")
             raise
@@ -239,7 +274,7 @@ async def websocket_endpoint(
 
 
 async def handle_receive_message(
-    websocket: WebSocket, client_id: str, session: SessionData
+    websocket: WebSocket, client_id: str, session: SessionManager
 ) -> None:
     message = await websocket.receive_json()
 
@@ -247,9 +282,12 @@ async def handle_receive_message(
     message_type = message.get("type")
 
     if message_type in ["get-state", "get-widget-states"]:
-        # These messages don't need widget_id, just forward them to the app instance
-        session["execution_manager"].communication_manager.to_app_instance.send(
-            {"type": "get-widget-states", "client_id": client_id}
+        # Convert to proper GetStateMessage Pydantic model
+        await session.send(
+            GetStateMessage(type=MessageType.GET_STATE).model_dump(),
+            wait_for_response=True,
+            timeout_seconds=10,
+            message_types=[MessageType.INIT_CONFIG],
         )
         return
 
@@ -258,74 +296,57 @@ async def handle_receive_message(
         logger.error(f"Received message without widget_id: {message}")
         return
 
-    # Continue with the existing logic for messages that have widget_id
-    session["execution_manager"].communication_manager.to_app_instance.send(
-        {
-            "type": message_type,  # Use the already extracted type
-            "widget_id": message["widget_id"],
-            "property": message.get("property"),
-            "value": message.get("value"),
-            "client_id": client_id,
-            "action_name": message.get("action_name"),
-            "args": message.get("args", []),
-            "kwargs": message.get("kwargs", {}),
-        }
-    )
+    msg: WidgetUpdateRequestMessage | ActionRequestMessage
+    # Convert to appropriate message type based on message_type
+    if message_type == "widget-update":
+        msg = WidgetUpdateRequestMessage(
+            type=MessageType.WIDGET_UPDATE,
+            widget_id=message["widget_id"],
+            property=message.get("property"),
+            value=message.get("value"),
+        )
+    elif message_type == "action-request":
+        msg = ActionRequestMessage(
+            type=MessageType.ACTION_REQUEST,
+            widget_id=message["widget_id"],
+            action_name=message.get("action_name", ""),
+            args=message.get("args", []),
+            kwargs=message.get("kwargs", {}),
+            client_id=client_id,
+            request_id=str(uuid.uuid4()),
+        )
+    else:
+        logger.warning(f"Unknown message type: {message_type}")
+        return
+
+    await session.send(msg.model_dump(), wait_for_response=False)
 
 
-async def handle_send_message(client_id: str, session: SessionData) -> None:
+async def handle_websocket_message(
+    websocket: WebSocket, message: dict[str, Any]
+) -> None:
+    """Handle incoming websocket messages by sending them to all connected clients."""
     try:
-        if not session[
-            "execution_manager"
-        ].communication_manager.from_app_instance.empty():
-            # Get the message once and distribute to all clients in the session
-            response = session[
-                "execution_manager"
-            ].communication_manager.from_app_instance.receive()
-            logger.debug(f"Received message from app instance: {response}")
+        msg_type = message.get("type")
+        if not isinstance(msg_type, str):
+            raise TypeError("Message type is not a string")  # noqa: TRY301
 
-            # Find all connected clients for this session
-            session_id = next(
-                sid
-                for sid, sdata in _app.state.config.sessions.items()
-                if sdata == session
-            )
-            session_connections = _app.state.config.connections.get(session_id, {})
+        model: WebSocketMessage
+        if msg_type == MessageType.WIDGET_UPDATE.value:
+            model = WidgetUpdateMessage(**message)
+        elif msg_type == MessageType.ACTION_RESPONSE.value:
+            model = ActionResponseMessage(**message)
+        elif msg_type == MessageType.INIT_CONFIG.value:
+            model = InitConfigMessage(**message)
+        elif msg_type == MessageType.ERROR.value:
+            model = ErrorMessage(**message)
+        else:
+            logger.warning(f"Unknown message type: {msg_type}")
+            return
 
-            # Use Union type for message
-            message: (
-                WidgetUpdateMessage
-                | InitConfigMessage
-                | ErrorMessage
-                | ActionResponseMessage
-            )
-            if response.get("type") == MessageType.WIDGET_UPDATE.value:
-                message = WidgetUpdateMessage(**response)
-            elif response.get("type") == "init-config":
-                message = InitConfigMessage(**response)
-            elif response.get("type") == "error":
-                message = ErrorMessage(**response)
-            elif response.get("type") == MessageType.ACTION_RESPONSE.value:
-                message = ActionResponseMessage(**response)
-            else:
-                logger.warning(f"Unknown message type: {response.get('type')}")
-                return
-
-            encoded_message = encode_model(message)
-
-            # Send to all connected clients for this session
-            for client_ws in session_connections.values():
-                try:
-                    await client_ws.send_text(encoded_message)
-                except WebSocketDisconnect:
-                    logger.debug(
-                        "Failed to send to a client - they may be disconnected"
-                    )
-                    continue
-
-        await asyncio.sleep(0.01)
-    except WebSocketDisconnect:
-        logger.debug(f"WebSocket disconnected for client {client_id}")
+        await websocket.send_text(encode_model(model))
+    except (ValueError, TypeError, WebSocketDisconnect, json.JSONDecodeError):
+        logger.debug("Failed to send message - client may be disconnected")
         raise
 
 
@@ -511,13 +532,13 @@ async def set_trait_value(
     session_id: str,
 ) -> TraitValue:
     """Set the value of a widget's trait."""
-    session = _get_session(
+    session_manager = await _get_session(
         _app.state.config.allow_threaded,
         session_id,
         _app.state.config.base_dir,
         _app.state.config.module_path,
         _app.state.config.template,
-        _app.state.config.sessions,
+        allow_create=False,
     )
 
     if widget_id not in _app.widgets:
@@ -539,9 +560,7 @@ async def set_trait_value(
     )
 
     # Send the message using the communication manager
-    session["execution_manager"].communication_manager.to_app_instance.send(
-        update_message.model_dump()
-    )
+    await session_manager.send(update_message.model_dump())
 
     # Return the updated trait value
     return TraitValue(
@@ -570,26 +589,6 @@ async def _handle_action_response(
         ) from err
 
 
-class MockWebSocket:
-    """Mock WebSocket for handling action responses."""
-
-    def __init__(self, response_queue: asyncio.Queue, request_id: str) -> None:  # type: ignore[type-arg]
-        self.response_queue = response_queue
-        self.request_id = request_id
-
-    async def send_text(self, message: str) -> None:
-        """Send a message to the mock WebSocket."""
-        try:
-            data = json.loads(message)
-            if (
-                data.get("type") == MessageType.ACTION_RESPONSE.value
-                and data.get("request_id") == self.request_id
-            ):
-                await self.response_queue.put(data)
-        except json.JSONDecodeError:
-            pass
-
-
 @_app.post("/api/widgets/{widget_id}/actions/{action_name}")  # type: ignore[misc]
 async def execute_widget_action(
     widget_id: str,
@@ -599,67 +598,57 @@ async def execute_widget_action(
     kwargs: dict[str, Any] | None = None,
 ) -> Any:  # noqa: ANN401
     """Execute an action on a widget."""
-    session = _get_session(
-        _app.state.config.allow_threaded,
-        session_id,
-        _app.state.config.base_dir,
-        _app.state.config.module_path,
-        _app.state.config.template,
-        _app.state.config.sessions,
-    )
+    try:
+        session = await _get_session(
+            _app.state.config.allow_threaded,
+            session_id,
+            _app.state.config.base_dir,
+            _app.state.config.module_path,
+            _app.state.config.template,
+            allow_create=False,
+        )
+    except Exception as e:
+        # Return a specific 404 status code for session not found
+        raise HTTPException(
+            status_code=404, detail="Session not found or expired"
+        ) from e
 
     if widget_id not in _app.widgets:
         raise HTTPException(status_code=404, detail=f"Widget '{widget_id}' not found")
 
-    # Create a unique request ID and client ID
+    # Create a unique request ID
     request_id = str(uuid.uuid4())
-    client_id = f"action_client_{request_id}"
 
-    # Create response queue for this specific request
-    response_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-
-    # Register this client in the connections
-    if session_id not in _app.state.config.connections:
-        _app.state.config.connections[session_id] = {}
-
-    # Create a WebSocket connection for this request
-    _app.state.config.connections[session_id][client_id] = MockWebSocket(
-        response_queue, request_id
+    # Create and send the action request message
+    action_request = ActionRequestMessage(
+        type=MessageType.ACTION_REQUEST,
+        widget_id=widget_id,
+        action_name=action_name,
+        args=tuple(args) if args is not None else None,
+        kwargs=kwargs or {},
+        request_id=request_id,
+        client_id="api_client",  # Use a fixed client ID for API requests
     )
 
     try:
-        # Create and send the action request message
-        action_request = ActionRequestMessage(
-            type=MessageType.ACTION_REQUEST.value,
-            widget_id=widget_id,
-            action_name=action_name,
-            args=tuple(args) if args is not None else None,
-            kwargs=kwargs or {},
-            request_id=request_id,
-            client_id=client_id,
+        # Send message and wait for response using session manager
+        response = await session.send(
+            action_request.model_dump(),
+            wait_for_response=True,
+            timeout_seconds=10,
+            message_types=[MessageType.ACTION_RESPONSE],
         )
+        if response is None:
+            raise HTTPException(status_code=500, detail="No response from action")
+        action_response = ActionResponseMessage(**response)
+        if action_response.error:
+            raise HTTPException(status_code=500, detail=action_response.error)
+        return action_response.result  # noqa: TRY300
 
-        # Send the message using the communication manager
-        session["execution_manager"].communication_manager.to_app_instance.send(
-            action_request.model_dump()
-        )
-
-        # Wait for response with timeout
-        try:
-            response = await asyncio.wait_for(response_queue.get(), timeout=10)
-            action_response = ActionResponseMessage(**response)
-            if action_response.error:
-                raise HTTPException(status_code=500, detail=action_response.error)
-            return action_response.result  # noqa: TRY300
-        except TimeoutError as e:
-            raise HTTPException(
-                status_code=504, detail="Timeout waiting for action response"
-            ) from e
-
-    finally:
-        # Clean up the temporary connection
-        if session_id in _app.state.config.connections:
-            _app.state.config.connections[session_id].pop(client_id, None)
+    except TimeoutError as e:
+        raise HTTPException(
+            status_code=504, detail="Timeout waiting for action response"
+        ) from e
 
 
 def _get_widget_actions(widget: AnyWidget) -> dict[str, dict[str, Any]]:
