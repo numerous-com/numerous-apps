@@ -107,8 +107,8 @@ jobs:
       - run: pip install python-semantic-release==9.6.0
       - id: check-version
         run: |
-          # Run version check and store output
-          OUTPUT=$(semantic-release version --no-commit --no-tag --no-push --no-changelog)
+          # Run version check and store output (capture both stdout and stderr)
+          OUTPUT=$(semantic-release version --no-commit --no-tag --no-push --no-changelog 2>&1)
           if echo "$OUTPUT" | grep -q "No release will be made"; then
             echo "VERSION_CHANGED=false" >> "$GITHUB_OUTPUT"
           else
