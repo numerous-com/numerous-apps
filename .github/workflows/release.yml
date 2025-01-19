@@ -109,7 +109,14 @@ jobs:
         run: |
           # Run version check and store output
           OUTPUT=$(semantic-release version --no-commit --no-tag --no-push --no-changelog)
-          echo "VERSION_CHANGED=$([[ "$OUTPUT" =~ "No release will be made" ]] && echo "false" || echo "true")" >> "$GITHUB_OUTPUT"
+          if [[ "$OUTPUT" =~ "No release will be made" ]]; then
+            echo "VERSION_CHANGED=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "VERSION_CHANGED=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Debug output
+        run: |
+          echo "Version changed? ${{ steps.check-version.outputs.VERSION_CHANGED }}"
       - name: Create release
         if: steps.check-version.outputs.VERSION_CHANGED == 'true'
         run: |
