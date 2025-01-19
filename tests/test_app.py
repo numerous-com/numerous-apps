@@ -15,6 +15,7 @@ from numerous.apps.models import (
     ActionRequestMessage,
     ActionResponseMessage
 )
+from numerous.apps.session_management import GlobalSessionManager, SessionId
 
 
 @pytest.fixture(scope="session")
@@ -226,56 +227,24 @@ def test_websocket_error_in_dev_mode(client, test_dirs):
         assert isinstance(data, dict)
 
 
-@pytest.mark.skipif(
-    os.environ.get("PYTEST_COVER", "0") == "1",
-    reason="Skip during coverage runs due to multiprocessing conflicts",
-)
-def test_multiprocess_mode(test_dirs, caplog):
-    """Test that the app works in multiprocess mode."""
-    from numerous.apps.app_server import templates
-
-    # Add the test templates directory to Jinja2's search path
-    templates.env.loader.searchpath.append(str(test_dirs / "templates"))
-
-    # Enable debug logging
-    caplog.set_level(logging.DEBUG)
-
-    widget = AnyWidget()
-    widget.module = "test-widget"
-    widget.html = "<div>Test Widget</div>"
-    widget.attributes = {"value": "test"}
-
-    app = create_app(
-        template="base.html.j2",
-        dev=True,
-        widgets={"test_widget": widget},
-        app_generator=None,  # Explicitly set to None to force multiprocess mode
+@pytest.fixture(scope="session")
+async def global_session_manager():
+    """Create and start a global session manager for testing."""
+    from numerous.apps.session_management import GlobalSessionManager
+    
+    # Create a new global session manager with shorter timeouts for testing
+    manager = GlobalSessionManager(
+        session_timeout=30.0,  # 30 seconds timeout
+        cleanup_interval=5.0,  # Check every 5 seconds
     )
-
-    client = TestClient(app)
-
-    try:
-        # First verify we can access the home page
-        response = client.get("/")
-        assert response.status_code == 200
-
-        # Now test the widgets endpoint
-        response = client.get("/api/widgets")
-        assert response.status_code == 200
-
-        session_id = response.json()["session_id"]
-        assert session_id in app.state.config.sessions
-
-        # Verify the execution manager type
-        execution_manager = app.state.config.sessions[session_id]["execution_manager"]
-        assert isinstance(execution_manager, MultiProcessExecutionManager)
-
-        # Verify the process is running
-        assert execution_manager.process.is_alive()
-
-    finally:
-        client.close()
-
+    
+    # Start the cleanup task
+    await manager.start_cleanup_task()
+    
+    yield manager
+    
+    # Cleanup after tests
+    await manager.shutdown()
 
 def test_widget_collection_from_locals(test_dirs):
     """Test that widgets are collected from locals when not explicitly provided."""

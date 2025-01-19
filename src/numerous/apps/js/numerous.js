@@ -28,6 +28,18 @@ function log(level, ...args) {
     }
 }
 
+// Add MessageType enum at the top of the file
+const MessageType = {
+    WIDGET_UPDATE: 'widget-update',
+    GET_STATE: 'get-state',
+    GET_WIDGET_STATES: 'get-widget-states',
+    ACTION_REQUEST: 'action-request',
+    ACTION_RESPONSE: 'action-response',
+    ERROR: 'error',
+    INIT_CONFIG: 'init-config',
+    SESSION_ERROR: 'session-error'
+};
+
 // Create a Model class instead of a single model object
 class WidgetModel {
     constructor(widgetId) {
@@ -123,20 +135,20 @@ async function loadWidget(moduleSource) {
     }
 }
 var wsManager;
-// Function to fetch widget configurations from the server
+// Function to fetch widget configurations and states from the server
 async function fetchWidgetConfigs() {
     try {
-        console.log("Fetching widget configs");
+        console.log("Fetching widget configs and states");
 
         let sessionId = sessionStorage.getItem('session_id');
         const response = await fetch(`/api/widgets?session_id=${sessionId}`);
-
         const data = await response.json();
 
         sessionStorage.setItem('session_id', data.session_id);
         sessionId = data.session_id;
 
         wsManager = new WebSocketManager(sessionId);
+        
         // Set log level if provided in the response
         if (data.logLevel !== undefined) {
             currentLogLevel = LOG_LEVELS[data.logLevel] ?? LOG_LEVELS.INFO;
@@ -150,15 +162,46 @@ async function fetchWidgetConfigs() {
     }
 }
 
-// Updated initialize widgets function to create individual models
+// Add these near the top with other state variables
+let renderedWidgets = 0;
+let totalWidgets = 0;
+let statesReceived = false;
+
+// Add this function to handle manual dismissal
+function dismissLoadingOverlay() {
+    const splashScreen = document.getElementById('splash-screen');
+    if (splashScreen) {
+        splashScreen.classList.add('hidden');
+        // Remove from DOM after transition
+        setTimeout(() => {
+            splashScreen.remove();
+        }, 300);
+    }
+}
+
+// Modify checkAllWidgetsReady to add a minimum display time
+let loadingStartTime = Date.now();
+const MIN_LOADING_TIME = 1000; // Minimum time to show loading overlay (1 second)
+
+
+
+
+// Modify the initializeWidgets function
 async function initializeWidgets() {
     console.log("Initializing widgets");
+    loadingStartTime = Date.now();
     const widgetConfigs = await fetchWidgetConfigs();
+    
+    // Reset tracking variables
+    totalWidgets = Object.keys(widgetConfigs).length;
+    renderedWidgets = 0;
+    statesReceived = false;
     
     for (const [widgetId, config] of Object.entries(widgetConfigs)) {
         const container = document.getElementById(widgetId);
         if (!container) {
             log(LOG_LEVELS.WARN, `Element with id ${widgetId} not found`);
+            renderedWidgets++; // Count failed widgets to maintain accurate tracking
             continue;
         }
 
@@ -220,7 +263,11 @@ async function initializeWidgets() {
             }
         }
     }
+
+    dismissLoadingOverlay();
 }
+
+
 
 // Initialize widgets when the document is loaded
 document.addEventListener('DOMContentLoaded', initializeWidgets); 
@@ -230,11 +277,13 @@ class WebSocketManager {
     constructor(sessionId) {
         this.clientId = Math.random().toString(36).substr(2, 9);
         this.sessionId = sessionId;
+        this.widgetModels = new Map();
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 1000;
         
-            
         log(LOG_LEVELS.INFO, `[WebSocketManager] Created with clientId ${this.clientId} and sessionId ${this.sessionId}`);
         this.connect();
-        this.widgetModels = new Map();
     }
 
     showErrorModal(message) {
@@ -244,75 +293,100 @@ class WebSocketManager {
         modal.style.display = 'block';
     }
 
+    showSessionLostBanner() {
+        const banner = document.getElementById('session-lost-banner');
+        log(LOG_LEVELS.DEBUG, `[WebSocketManager] Banner element exists: ${!!banner}`);
+        if (banner) {
+            banner.classList.remove('hidden');
+            log(LOG_LEVELS.DEBUG, `[WebSocketManager] Banner classes after show: ${banner.className}`);
+        } else {
+            log(LOG_LEVELS.ERROR, `[WebSocketManager] Session lost banner element not found in DOM`);
+        }
+    }
+
     connect() {
         log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Connecting to WebSocket...`);
-        // Detect if is secure  
         const isSecure = window.location.protocol === 'https:';
         const wsProtocol = isSecure ? 'wss:' : 'ws:';
         this.ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${this.clientId}/${this.sessionId}`);
         
         this.ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Received message:`, message);
-            
-            // Handle all message types
-            switch (message.type) {
-                case 'error':
-                    log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error from backend:`, message);
-                    const errorMessage = `Error: ${message.error_type}\n${message.message}\n\nTraceback:\n${message.traceback || 'No traceback available'}`;
-                    this.showErrorModal(errorMessage);
-                    break;
-
-                case 'widget-update':
-                    // Handle widget updates from both actions and direct changes
-                    const model = this.widgetModels.get(message.widget_id);
-                    if (model) {
-                        log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Updating widget ${message.widget_id}: ${message.property} = ${message.value}`);
-                        // Update the model without triggering a send back to server
-                        model.set(message.property, message.value, true);
+            try {
+                const message = JSON.parse(event.data);
+                log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Received message:`, message);
+                
+                // Handle all message types
+                switch (message.type) {
+                    case MessageType.SESSION_ERROR:
+                        log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Session error received`);
+                        this.showSessionLostBanner();
                         
-                        // Also trigger a general update event that widgets can listen to
-                        model.trigger('update', {
-                            property: message.property,
-                            value: message.value
-                        });
-                    } else {
-                        log(LOG_LEVELS.WARN, `[WebSocketManager ${this.clientId}] No model found for widget ${message.widget_id}`);
-                    }
-                    break;
+                        // Don't attempt to reconnect on session errors
+                        this.reconnectAttempts = this.maxReconnectAttempts;
+                        
+                        // Hide the connection status overlay since this is a session error
+                        const connectionStatus = document.getElementById('connection-status');
+                        if (connectionStatus) {
+                            connectionStatus.classList.add('hidden');
+                        }
+                        break;
 
-                case 'action-response':
-                    log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Received action response:`, message);
-                    const actionModel = this.widgetModels.get(message.widget_id);
-                    if (actionModel) {
-                        if (message.error) {
-                            this.showErrorModal(message.error);
-                        } else {
-                            // Trigger specific action completion event
-                            actionModel.trigger(`action:${message.action_name}`, {
-                                result: message.result
+                    case 'widget-update':
+                        // Handle widget updates from both actions and direct changes
+                        const model = this.widgetModels.get(message.widget_id);
+                        if (model) {
+                            log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Updating widget ${message.widget_id}: ${message.property} = ${message.value}`);
+                            // Update the model without triggering a send back to server
+                            model.set(message.property, message.value, true);
+                            
+                            // Also trigger a general update event that widgets can listen to
+                            model.trigger('update', {
+                                property: message.property,
+                                value: message.value
                             });
                         }
-                    }
-                    break;
+                        break;
 
-                default:
-                    log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Unhandled message type: ${message.type}`);
+                    case 'error':
+                        log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error from backend:`, message);
+                        this.showErrorModal(message.error || 'Unknown error occurred');
+                        break;
+
+                    default:
+                        log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Unhandled message type: ${message.type}`);
+                }
+            } catch (error) {
+                log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error processing message:`, error);
             }
         };
 
         this.ws.onopen = () => {
             log(LOG_LEVELS.INFO, `[WebSocketManager] WebSocket connection established`);
-            this.ws.send(JSON.stringify({type: 'get-widget-states', client_id: this.clientId}));
+            this.hideConnectionStatus();
+            //this.ws.send(JSON.stringify({
+            //    type: 'get-widget-states',
+            //    client_id: this.clientId
+            //}));
         };
 
-        this.ws.onclose = () => {
-            log(LOG_LEVELS.INFO, `[WebSocketManager] WebSocket connection closed, attempting to reconnect...`);
-            setTimeout(() => this.connect(), 1000);
+        this.ws.onclose = (event) => {
+            log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] WebSocket connection closed`);
+            
+            // Only show connection status if it's not a session error
+            if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.showConnectionStatus();
+                this.reconnectAttempts++;
+                setTimeout(() => this.connect(), this.reconnectDelay);
+                this.reconnectDelay *= 2;
+            }
         };
 
         this.ws.onerror = (error) => {
-            log(LOG_LEVELS.ERROR, `[WebSocketManager] WebSocket error:`, error);
+            log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] WebSocket error:`, error);
+            // Only show connection status for non-session errors
+            if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.showConnectionStatus();
+            }
         };
     }
 
@@ -328,6 +402,30 @@ class WebSocketManager {
             this.ws.send(JSON.stringify(message));
         } else {
             log(LOG_LEVELS.WARN, `[WebSocketManager] Cannot send update - WebSocket not open`);
+        }
+    }
+
+    showConnectionStatus() {
+        const statusOverlay = document.getElementById('connection-status');
+        if (statusOverlay) {
+            statusOverlay.classList.remove('hidden');
+        }
+    }
+
+    hideConnectionStatus() {
+        const statusOverlay = document.getElementById('connection-status');
+        if (statusOverlay) {
+            statusOverlay.classList.add('hidden');
+        }
+    }
+
+    updateConnectionStatus(message) {
+        const statusOverlay = document.getElementById('connection-status');
+        if (statusOverlay) {
+            const messageElement = statusOverlay.querySelector('.loading-content div:last-child');
+            if (messageElement) {
+                messageElement.textContent = message;
+            }
         }
     }
 }

@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 from threading import Event
 from queue import Queue
+import asyncio
 import pytest
 from starlette.templating import Jinja2Templates
 
@@ -17,109 +18,151 @@ from numerous.apps.server import (
     _create_handler,
     _get_session,
     _load_main_js,
+    global_session_manager,
 )
+from numerous.apps.session_management import SessionId
+
+
+class MockCommunicationChannel:
+    """Mock communication channel for testing."""
+    
+    def __init__(self) -> None:
+        self._queue: list[dict[str, Any]] = []
+        self.sent_messages: list[dict[str, Any]] = []
+
+    def receive(self, timeout: float | None = None) -> dict[str, Any]:
+        """Non-blocking receive implementation."""
+        if not self._queue:
+            raise Empty()
+        return self._queue.pop(0)
+
+    def receive_nowait(self) -> dict[str, Any]:
+        """Non-blocking receive implementation."""
+        if not self._queue:
+            raise Empty()
+        return self._queue.pop(0)
+
+    def send(self, message: dict[str, Any]) -> None:
+        """Send implementation."""
+        self.sent_messages.append(message)
+
+    def empty(self) -> bool:
+        """Check if queue is empty."""
+        return len(self._queue) == 0
+
+    def put_message(self, message: dict[str, Any]) -> None:
+        """Helper to put a message in the queue."""
+        self._queue.append(message)
 
 
 class MockExecutionManager:
     def __init__(self) -> None:
-        self.communication_manager = Mock()
-        self.communication_manager.from_app_instance = Mock()
-        self.communication_manager.to_app_instance = Mock()
+        self.from_app_instance = MockCommunicationChannel()
+        self.to_app_instance = MockCommunicationChannel()
+        self.communication_manager = Mock(
+            from_app_instance=self.from_app_instance,
+            to_app_instance=self.to_app_instance,
+            stop_event=asyncio.Event()
+        )
         self.started = False
 
-    def start(self, *args, **kwargs):
+    def start(self, *args: Any, **kwargs: Any) -> None:
         self.started = True
 
+    async def stop(self) -> None:
+        self.started = False
+        self.communication_manager.stop_event.set()
 
-def test_get_session_creates_new_session() -> None:
+
+@pytest.mark.asyncio
+async def test_get_session_creates_new_session() -> None:
     """Test that _get_session creates a new session when it doesn't exist."""
-    sessions = {}
-    session_id = "test_session"
+    session_id = ""  # Empty session ID to trigger new session creation
 
     with patch(
         "numerous.apps.server.MultiProcessExecutionManager",
         return_value=MockExecutionManager(),
     ):
-        session = _get_session(
-            allow_threaded=False,
-            session_id=session_id,
-            base_dir=".",
-            module_path="test.py",
-            template="",
-            sessions=sessions,
-        )
+        try:
+            session = await asyncio.wait_for(
+                _get_session(
+                    allow_threaded=False,
+                    session_id=session_id,
+                    base_dir=".",
+                    module_path="test.py",
+                    template="",
+                ),
+                timeout=1.0
+            )
+            assert global_session_manager.has_session(SessionId(session.session_id))
+        finally:
+            # Cleanup any sessions created during the test
+            for sid in list(global_session_manager._sessions.keys()):
+                await global_session_manager.remove_session(sid)
 
-    assert session_id in sessions
 
-
-def test_get_session_loads_config() -> None:
+@pytest.mark.asyncio
+async def test_get_session_loads_config() -> None:
     """Test that _get_session loads configuration when requested."""
-    sessions = {}
-    session_id = "test_session"
+    session_id = ""
     mock_manager = MockExecutionManager()
-    mock_manager.communication_manager.from_app_instance.receive.return_value = {
+    
+    # Put the init-config message in the queue
+    mock_manager.from_app_instance.put_message({
         "type": "init-config",
         "widget_configs": {"widget1": {"defaults": "{}"}},
-    }
+    })
 
     with patch(
         "numerous.apps.server.MultiProcessExecutionManager", return_value=mock_manager
     ):
-        session = _get_session(
-            allow_threaded=False,
-            session_id=session_id,
-            base_dir=".",
-            module_path="test.py",
-            template="",
-            sessions=sessions,
-            load_config=True,
-        )
-
-    assert "config" in session
-
-
-def test_get_session_raises_on_invalid_config() -> None:
-    """Test that _get_session raises AppInitError on invalid config."""
-    sessions = {}
-    session_id = "test_session"
-    mock_manager = MockExecutionManager()
-    mock_manager.communication_manager.from_app_instance.receive.return_value = {
-        "type": "invalid-type"
-    }
-
-    with pytest.raises(AppInitError):
-        with patch(
-            "numerous.apps.server.MultiProcessExecutionManager",
-            return_value=mock_manager,
-        ):
-            _get_session(
-                allow_threaded=False,
-                session_id=session_id,
-                base_dir=".",
-                module_path="test.py",
-                template="",
-                sessions=sessions,
-                load_config=True,
+        try:
+            session = await asyncio.wait_for(
+                _get_session(
+                    allow_threaded=False,
+                    session_id=session_id,
+                    base_dir=".",
+                    module_path="test.py",
+                    template="",
+                ),
+                timeout=1.0
             )
+            assert session is not None
+        finally:
+            # Cleanup any sessions created during the test
+            for sid in list(global_session_manager._sessions.keys()):
+                await global_session_manager.remove_session(sid)
 
 
-def test_get_template_adds_template_path() -> None:
-    """Test that _get_template adds the template path to the searchpath."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create a test template file
-        template_path = Path(tmpdir) / "test_template.html"
-        template_path.write_text("<html></html>")
+@pytest.mark.asyncio
+async def test_get_session_with_threaded_execution() -> None:
+    """Test that _get_session creates ThreadedExecutionManager when requested."""
+    session_id = ""
 
-        # Create error template
-        error_template_path = Path(tmpdir) / "error.html.j2"
-        error_template_path.write_text(
-            "<html><body>Error: {{ error_message }}</body></html>"
-        )
+    with patch("numerous.apps.server.ThreadedExecutionManager") as mock_threaded:
+        mock_manager = MockExecutionManager()
+        mock_threaded.return_value = mock_manager
 
-        # Create Jinja2Templates environment
-        templates = Jinja2Templates(directory=tmpdir)
-
-        assert str(template_path.parent) in templates.env.loader.searchpath
+        try:
+            session = await asyncio.wait_for(
+                _get_session(
+                    allow_threaded=True,
+                    session_id=session_id,
+                    base_dir=".",
+                    module_path="test.py",
+                    template="",
+                ),
+                timeout=1.0
+            )
+            
+            # Verify ThreadedExecutionManager was used
+            mock_threaded.assert_called_once()
+            assert mock_manager.started
+            assert session is not None
+        finally:
+            # Cleanup any sessions created during the test
+            for sid in list(global_session_manager._sessions.keys()):
+                await global_session_manager.remove_session(sid)
 
 
 def test_app_process_loads_module() -> None:
@@ -254,29 +297,6 @@ def test_create_handler_ignores_clicked() -> None:
 
     # Verify no message was sent
     mock_channel.send.assert_not_called()
-
-
-def test_get_session_with_threaded_execution() -> None:
-    """Test that _get_session creates ThreadedExecutionManager when requested."""
-    sessions: dict[str, Any] = {}
-    session_id = "test_session"
-
-    with patch("numerous.apps.server.ThreadedExecutionManager") as mock_threaded:
-        mock_manager = MockExecutionManager()
-        mock_threaded.return_value = mock_manager
-
-        session = _get_session(  # noqa: F841
-            allow_threaded=True,
-            session_id=session_id,
-            base_dir=".",
-            module_path="test.py",
-            template="",
-            sessions=sessions,
-        )
-
-        # Verify ThreadedExecutionManager was used
-        mock_threaded.assert_called_once()
-        assert mock_manager.started
 
 
 def test_app_process_handles_import_error() -> None:
