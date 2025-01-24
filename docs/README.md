@@ -13,7 +13,8 @@ This will copy a simple bootstrap app to the `my_app` directory, install the dep
 To run the app subsequently, run the following command:
 
 ```bash
-python my_app/app.py
+cd my_app
+python app.py
 ```
 
 To edit the python reactivity, edit the `app.py` file.
