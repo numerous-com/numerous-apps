@@ -1,5 +1,27 @@
 # Numerous Apps
 
+## Quick Start
+
+To install the framework and bootstrap your first app, run the following commands:
+
+```bash
+pip install numerous-apps
+numerous-bootstrap my_app
+```
+
+This will copy a simple bootstrap app to the `my_app` directory, install the dependencies and start the app server on 127.0.0.1:8000.
+To run the app subsequently, run the following command:
+
+```bash
+python my_app/app.py
+```
+
+To edit the python reactivity, edit the `app.py` file.
+
+To edit the html template, edit the `index.html.j2` file. Its a jinja2 template file, so you can use the jinja2 syntax to define the layout of the app.
+
+## Introduction
+
 A new Python framework in development, aiming to provide a powerful yet simple approach for building reactive web applications. **Numerous Apps** empowers developers to create modern, scalable web applications using familiar Python patterns while maintaining a clean separation between business logic and presentation.
 
 ## Who is this for?
@@ -11,7 +33,7 @@ If you are:
 - Using standard development tools and languages.
 - Seeking to have full control over the layout, components and styling for your apps.
 - OK with a bit of boilerplate to keep your code clean and organized.
-- Creating a library of your own AnyWidgets that you can use in other Python app frameworks or React apps.
+- Creating a library of your own anywidgets that you can use in other Python app frameworks or React apps.
 
 This framework is for you.
 
@@ -21,22 +43,22 @@ Our framework emphasizes modularity, allowing for easy separation of concerns. W
 
 ## Planned Features
 
-### 🚀 **Simple Yet Powerful**
+### **Simple Yet Powerful**
 - **Intuitive Syntax:** Develop reactive web apps using standard Python and HTML.
 - **Quick Start:** Utilize the `numerous-bootstrap` command to create a new app in seconds.
 - **Lightweight Core:** Built atop FastAPI, Uvicorn, Jinja2, and AnyWidget to keep the core lightweight and simple.
 
-### 🔧 **Modern Architecture**
+### **Modern Architecture**
 - **Component-Based:** Leverage [AnyWidget](https://anywidget.dev/) for reusable, framework-agnostic components.
 - **Clear Separation:** Use Python for logic, CSS for styling, and Jinja2 for templates.
 - **Process Isolation:** Each session runs independently, enhancing stability and scalability.
 
-### 🎨 **Full Creative Control**
+### **Full Creative Control**
 - **Framework-Agnostic UI:** No enforced styling or components from our side — You have complete freedom in design.
 - **Custom Widget Support:** Easily integrate your own HTML, CSS, JS components, and static files.
 - **Flexible Templating:** Utilize Jinja2 and HTML for powerful layout composition.
 
-### 💪 **Built for Scale**
+### **Built for Scale**
 - **Multi-Client Ready:** Designed to scale and handle multiple clients simultaneously, with support for distributed app instances.
 - **AI Integration:** Seamless integration with AI agents and models.
 - **Developer-Friendly:** Compatible with your favorite IDE and development tools—no special IDE or notebook needed.
@@ -158,7 +180,7 @@ Widgets are the building blocks of the app. They are the components that will be
 
 The concept of the numerous app framework is to support AnyWidget and not have our own widget specification. We are adding the minimum amount of functionality to AnyWidget to make it work in the numerous app framework, which is basically to collect widgets, link them with your html template and then serve them.
 
-To get started, We do supply a set of AnyWidgets in the numerous-widgets package. This package is used by the bootstrap app and will be installed when you bootstrap your app.
+To get started, We do supply a set of anywidgets in the numerous-widgets package. This package is used by the bootstrap app and will be installed when you bootstrap your app.
 
 ## HTML Template
 
@@ -170,7 +192,7 @@ You can include CSS, JS and image files in the static folder, and reference them
 
 ## How It Works
 
-The **Numerous Apps** framework is built on FastAPI and uses Uvicorn to serve the app.
+The **Numerous Apps** framework is built on FastAPI and uses uvicorn to serve the app.
 
 When the browser requests the root URL, the server serves the HTML content by inserting a `div` with each widget's corresponding key as the ID into the HTML template using Jinja2.
 

@@ -1,9 +1,0 @@
-name = "Numerous AF Test"
-description = "Test of Numerous AF"
-cover_image = "app_cover.jpg"
-exclude = ["*venv", "venv*", ".git", ".env"]
-port = 8000
-
-[docker]
-  dockerfile = "Dockerfile"
-  context = "../.."

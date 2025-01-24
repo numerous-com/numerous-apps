@@ -32,7 +32,10 @@ body {
   box-shadow: var(--ui-widget-dropdown-shadow);
   padding: 1em;
   flex: 1;
+  max-height: calc(90vh - 4em);
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .header-container {
@@ -72,6 +75,8 @@ footer {
   padding: 1em;
   display: flex;
   flex-direction: column;
+  height: calc(96vh - 3em);
+  min-height: 0;
 }
 
 .error-modal {

@@ -22,3 +22,5 @@ test_apps
 build
 htmlcov
 .coverage
+.vscode
+.pytest_cache
