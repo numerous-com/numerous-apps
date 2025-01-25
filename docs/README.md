@@ -47,10 +47,10 @@ Our framework emphasizes modularity, allowing for easy separation of concerns. W
 ### **Simple Yet Powerful**
 - **Intuitive Syntax:** Develop reactive web apps using standard Python and HTML.
 - **Quick Start:** Utilize the `numerous-bootstrap` command to create a new app in seconds.
-- **Lightweight Core:** Built atop FastAPI, Uvicorn, Jinja2, and AnyWidget to keep the core lightweight and simple.
+- **Lightweight Core:** Built atop FastAPI, Uvicorn, Jinja2, and anywidget to keep the core lightweight and simple.
 
 ### **Modern Architecture**
-- **Component-Based:** Leverage [AnyWidget](https://anywidget.dev/) for reusable, framework-agnostic components.
+- **Component-Based:** Leverage [anywidget](https://anywidget.dev/) for reusable, framework-agnostic components.
 - **Clear Separation:** Use Python for logic, CSS for styling, and Jinja2 for templates.
 - **Process Isolation:** Each session runs independently, enhancing stability and scalability.
 
@@ -125,7 +125,7 @@ def on_click(event):
 button = wi.Button(label="Click me", on_click=on_click)
 ```
 
-You can also use the `observe` method to create reactivity which is provided directly by the AnyWidget framework.
+You can also use the `observe` method to create reactivity which is provided directly by the anywidget framework.
 
 ```python
 def callback(event):
@@ -179,7 +179,7 @@ You can now run your app by running the app.py file and accessing it at `http://
 
 Widgets are the building blocks of the app. They are the components that will be used to build the app. Widgets are defined in the `app.py` file.
 
-The concept of the numerous app framework is to support AnyWidget and not have our own widget specification. We are adding the minimum amount of functionality to AnyWidget to make it work in the numerous app framework, which is basically to collect widgets, link them with your html template and then serve them.
+The concept of the numerous app framework is to support anywidget and not have our own widget specification. We are adding the minimum amount of functionality to anywidget to make it work in the numerous app framework, which is basically to collect widgets, link them with your html template and then serve them.
 
 To get started, We do supply a set of anywidgets in the numerous-widgets package. This package is used by the bootstrap app and will be installed when you bootstrap your app.
 
