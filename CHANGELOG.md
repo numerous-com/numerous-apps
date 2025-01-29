@@ -2,6 +2,17 @@
 
 
 
+## v0.1.6 (2025-01-29)
+
+### Fix
+
+* fix(server): set widget div display: flex 100% ([`f9711aa`](https://github.com/numerous-com/numerous-apps/commit/f9711aaec09df19dbc2243cbe53f3b92c6bdeb3d))
+
+### Unknown
+
+* Update README with quick start guide and framework details. ([`e87fe0a`](https://github.com/numerous-com/numerous-apps/commit/e87fe0a6a5b01b186ab400c850ce433b01ee32e3))
+
+
 ## v0.1.5 (2025-01-19)
 
 ### Fix
