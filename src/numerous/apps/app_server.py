@@ -89,7 +89,7 @@ class NumerousAppServerState:
 
 
 def wrap_html(key: str) -> str:
-    return f'<div id="{key}"></div>'
+    return f'<div id="{key}" style="display: flex; width: 100%; height: 100%;"></div>'
 
 
 def _handle_template_error(error_title: str, error_message: str) -> HTMLResponse:
