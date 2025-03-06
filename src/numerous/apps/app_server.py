@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from jinja2 import FileSystemLoader, meta
 from starlette.responses import HTMLResponse
-from starlette.websockets import WebSocketDisconnect
+from starlette.websockets import WebSocketDisconnect, WebSocketState
 
 from .builtins import ParentVisibility
 from .execution import _describe_widgets
@@ -344,10 +344,18 @@ async def handle_websocket_message(
             logger.warning(f"Unknown message type: {msg_type}")
             return
 
-        await websocket.send_text(encode_model(model))
-    except (ValueError, TypeError, WebSocketDisconnect, json.JSONDecodeError):
+        # Check if websocket is still connected before sending
+        if websocket.client_state == WebSocketState.CONNECTED:
+            try:
+                await websocket.send_text(encode_model(model))
+            except RuntimeError as e:
+                if "websocket.close" in str(e):
+                    logger.debug("Websocket already closed, cannot send message")
+                    raise WebSocketDisconnect from e
+                raise
+    except (ValueError, TypeError, WebSocketDisconnect, json.JSONDecodeError) as e:
         logger.debug("Failed to send message - client may be disconnected")
-        raise
+        raise WebSocketDisconnect from e
 
 
 def cleanup_connection(session_id: str, client_id: str) -> None:
