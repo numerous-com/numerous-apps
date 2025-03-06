@@ -2,6 +2,13 @@
 
 
 
+## v0.1.7 (2025-03-06)
+
+### Fix
+
+* fix(websocket): Improve error handling and connection state checks ([`dc8085b`](https://github.com/numerous-com/numerous-apps/commit/dc8085bef4c0f7cd6b12f428e636794b22b9e465))
+
+
 ## v0.1.6 (2025-01-29)
 
 ### Fix
