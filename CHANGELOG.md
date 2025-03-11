@@ -2,6 +2,20 @@
 
 
 
+## v0.2.0 (2025-03-11)
+
+### Feature
+
+* feat(websocket): Enhance session management and connection handling
+
+Implement robust session lifecycle management with:
+- Periodic session cleanup
+- Timeout handling for inactive sessions
+- Improved WebSocket connection state tracking
+- Better error handling and connection recovery
+- Queuing messages during connection establishment ([`5083ca3`](https://github.com/numerous-com/numerous-apps/commit/5083ca3b5db3850702ab009e8f83ac84676c1a3d))
+
+
 ## v0.1.7 (2025-03-06)
 
 ### Fix
