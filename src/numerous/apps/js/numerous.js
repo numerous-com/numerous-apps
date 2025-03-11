@@ -46,20 +46,48 @@ class WidgetModel {
         this.widgetId = widgetId;
         this.data = {};
         this._callbacks = {};
+        this._initializing = true; // Flag to indicate initial setup
+        this._pendingChanges = new Map(); // Store changes that happen during initialization
         log(LOG_LEVELS.DEBUG, `[WidgetModel] Created for widget ${widgetId}`);
     }
     
     set(key, value, suppressSync = false) {
         log(LOG_LEVELS.DEBUG, `[WidgetModel] Setting ${key}=${value} for widget ${this.widgetId}`);
+        const oldValue = this.data[key];
+        
+        // Only trigger if value actually changed
+        const valueChanged = oldValue !== value;
+        
         this.data[key] = value;
 
-        this.trigger('change:' + key, value);
+        if (valueChanged) {
+            this.trigger('change:' + key, value);
+        }
         
         // Sync with server if not suppressed
         if (!suppressSync && !this._suppressSync) {
             log(LOG_LEVELS.DEBUG, `[WidgetModel] Sending update to server`);
             wsManager.sendUpdate(this.widgetId, key, value);
+        } else if (this._initializing && !suppressSync) {
+            // If we're initializing and change isn't suppressed, store for later sync
+            log(LOG_LEVELS.DEBUG, `[WidgetModel] Queuing change for later: ${key}=${value}`);
+            this._pendingChanges.set(key, value);
         }
+    }
+    
+    // Mark initialization complete and send any pending changes
+    completeInitialization() {
+        if (!this._initializing) return;
+        
+        log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Completing initialization, processing ${this._pendingChanges.size} pending changes`);
+        this._initializing = false;
+        
+        // Send any pending changes
+        for (const [key, value] of this._pendingChanges.entries()) {
+            wsManager.sendUpdate(this.widgetId, key, value);
+        }
+        
+        this._pendingChanges.clear();
     }
     
     get(key) {
@@ -67,11 +95,16 @@ class WidgetModel {
     }
     
     save_changes() {
-        log('Saving changes:', this.data);
-        for (const [key, value] of Object.entries(this.data)) {
-            
-            //console.log(`[WidgetModel] Saving change: ${key}=${value}`);
-            //wsManager.sendUpdate(this.widgetId, key, value);
+        log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Saving changes`);
+        
+        // If we're still initializing, mark initialization as complete
+        if (this._initializing) {
+            this.completeInitialization();
+        } else {
+            // Otherwise, send all current values to server
+            for (const [key, value] of Object.entries(this.data)) {
+                wsManager.sendUpdate(this.widgetId, key, value);
+            }
         }
     }
 
@@ -183,9 +216,6 @@ function dismissLoadingOverlay() {
 let loadingStartTime = Date.now();
 const MIN_LOADING_TIME = 1000; // Minimum time to show loading overlay (1 second)
 
-
-
-
 // Modify the initializeWidgets function
 async function initializeWidgets() {
     console.log("Initializing widgets");
@@ -197,6 +227,31 @@ async function initializeWidgets() {
     renderedWidgets = 0;
     statesReceived = false;
     
+    // Wait for WebSocket connection to be established before initializing widgets
+    await wsManager.connectionReady();
+    log(LOG_LEVELS.INFO, "WebSocket connection ready, initializing widgets");
+    
+    const widgetModels = new Map();
+    
+    // First phase: Create all models and set default values
+    for (const [widgetId, config] of Object.entries(widgetConfigs)) {
+        // Create a new model instance for this widget
+        const widgetModel = new WidgetModel(widgetId);
+        
+        // Store in our local map and the WebSocket manager
+        widgetModels.set(widgetId, widgetModel);
+        wsManager.widgetModels.set(widgetId, widgetModel);
+        
+        // Initialize default values for this widget
+        for (const [key, value] of Object.entries(config.defaults || {})) {
+            if (!widgetModel.get(key)) {    
+                log(LOG_LEVELS.DEBUG, `[WidgetModel ${widgetId}] Setting default value for ${key}=${value}`);
+                widgetModel.set(key, value, true); // Suppress sync during initialization
+            }
+        }
+    }
+    
+    // Second phase: Render all widgets
     for (const [widgetId, config] of Object.entries(widgetConfigs)) {
         const container = document.getElementById(widgetId);
         if (!container) {
@@ -206,10 +261,7 @@ async function initializeWidgets() {
         }
 
         let element;
-        // Add debug logging for Plotly detection
-        // log(LOG_LEVELS.DEBUG, `[Widget ${widgetId}] Module URL:`, config.moduleUrl);
         const isPlotlyWidget = config.moduleUrl?.toLowerCase().includes('plotly');
-        // log(LOG_LEVELS.DEBUG, `[Widget ${widgetId}] Is Plotly widget:`, isPlotlyWidget);
         
         if (USE_SHADOW_DOM && !isPlotlyWidget) {
             // Use Shadow DOM for non-Plotly widgets
@@ -235,39 +287,32 @@ async function initializeWidgets() {
             }
         }
 
+        const widgetModel = widgetModels.get(widgetId);
         const widgetModule = await loadWidget(config.moduleUrl);
-        if (widgetModule) {
-            // Create a new model instance for this widget
-            const widgetModel = new WidgetModel(widgetId);
-            
-            // Store the model in the WebSocket manager
-            wsManager.widgetModels.set(widgetId, widgetModel);
-
-            // Initialize default values for this widget
-            for (const [key, value] of Object.entries(config.defaults || {})) {
-                if (!widgetModel.get(key)) {    
-                    log(LOG_LEVELS.DEBUG, `[WidgetModel ${widgetId}] Setting default value for ${key}=${value}`);
-                    widgetModel.set(key, value, true);
-                }
-            }
-            // widgetModel.save_changes();
-            
+        
+        if (widgetModule && widgetModel) {
             try {
-                // Render the widget with its own model inside the shadow DOM
+                // Render the widget with its model
                 await widgetModule.default.render({
                     model: widgetModel,
                     el: element
                 });
+                
+                log(LOG_LEVELS.DEBUG, `Widget ${widgetId} rendered successfully`);
             } catch (error) {
                 log(LOG_LEVELS.ERROR, `Failed to render widget ${widgetId}:`, error);
             }
         }
     }
+    
+    // Third phase: Complete initialization for all models to send pending changes
+    log(LOG_LEVELS.INFO, "All widgets rendered, completing initialization");
+    for (const widgetModel of widgetModels.values()) {
+        widgetModel.completeInitialization();
+    }
 
     dismissLoadingOverlay();
 }
-
-
 
 // Initialize widgets when the document is loaded
 document.addEventListener('DOMContentLoaded', initializeWidgets); 
@@ -281,6 +326,12 @@ class WebSocketManager {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 1000;
+        this.messageQueue = [];
+        
+        // Create a promise to track connection state
+        this.connectionPromise = new Promise((resolve) => {
+            this.resolveConnection = resolve;
+        });
         
         log(LOG_LEVELS.INFO, `[WebSocketManager] Created with clientId ${this.clientId} and sessionId ${this.sessionId}`);
         this.connect();
@@ -363,10 +414,18 @@ class WebSocketManager {
         this.ws.onopen = () => {
             log(LOG_LEVELS.INFO, `[WebSocketManager] WebSocket connection established`);
             this.hideConnectionStatus();
-            //this.ws.send(JSON.stringify({
-            //    type: 'get-widget-states',
-            //    client_id: this.clientId
-            //}));
+            
+            // Request all widget states after connection
+            this.ws.send(JSON.stringify({
+                type: 'get-widget-states',
+                client_id: this.clientId
+            }));
+            
+            // Process any queued messages
+            this.flushMessageQueue();
+            
+            // Resolve the connection promise to indicate the connection is ready
+            this.resolveConnection();
         };
 
         this.ws.onclose = (event) => {
@@ -390,18 +449,37 @@ class WebSocketManager {
         };
     }
 
+    // Method to wait for connection to be established
+    async connectionReady() {
+        return this.connectionPromise;
+    }
+    
+    // Send all queued messages once connection is established
+    flushMessageQueue() {
+        if (this.messageQueue.length === 0) return;
+        
+        log(LOG_LEVELS.DEBUG, `[WebSocketManager] Sending ${this.messageQueue.length} queued messages`);
+        
+        while (this.messageQueue.length > 0) {
+            const message = this.messageQueue.shift();
+            this.ws.send(JSON.stringify(message));
+        }
+    }
+
     sendUpdate(widgetId, property, value) {
-        if (this.ws.readyState === WebSocket.OPEN) {
-            const message = {
-                type: "widget-update",
-                widget_id: widgetId,
-                property: property,
-                value: value
-            };
+        const message = {
+            type: "widget-update",
+            widget_id: widgetId,
+            property: property,
+            value: value
+        };
+        
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             log(LOG_LEVELS.DEBUG, `[WebSocketManager] Sending update:`, message);
             this.ws.send(JSON.stringify(message));
         } else {
-            log(LOG_LEVELS.WARN, `[WebSocketManager] Cannot send update - WebSocket not open`);
+            log(LOG_LEVELS.DEBUG, `[WebSocketManager] Queuing update message for later:`, message);
+            this.messageQueue.push(message);
         }
     }
 

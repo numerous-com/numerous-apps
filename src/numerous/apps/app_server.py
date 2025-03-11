@@ -4,8 +4,10 @@ import asyncio
 import inspect
 import json
 import logging
+import time
 import uuid
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from inspect import getmembers
 from pathlib import Path
@@ -43,12 +45,19 @@ from .models import (
 )
 from .server import (
     NumerousApp,
-    SessionData,
     _get_session,
     _get_template,
     _load_main_js,
 )
 from .session_management import SessionManager
+
+
+# Session management constants
+MAX_SESSIONS = 100
+DEFAULT_SESSION_TIMEOUT = 24 * 60 * 60  # 24 hours in seconds
+OVERFLOW_SESSION_TIMEOUT = 60 * 60  # 1 hour in seconds
+CLEANUP_INTERVAL = 5 * 60  # Check for expired sessions every 5 minutes
+NORMAL_CLOSE_CODE = 1000  # WebSocket normal closure code
 
 
 class AppProcessError(Exception):
@@ -75,6 +84,16 @@ templates.env.autoescape = False  # Disable autoescaping globally
 
 
 @dataclass
+class SessionInfo:
+    """Stores session information including timing data."""
+
+    data: SessionManager
+    last_active: float = field(default_factory=time.time)
+    created_at: float = field(default_factory=time.time)
+    connections: dict[str, WebSocket] = field(default_factory=dict)
+
+
+@dataclass
 class NumerousAppServerState:
     dev: bool
     main_js: str
@@ -82,10 +101,10 @@ class NumerousAppServerState:
     module_path: str
     template: str
     internal_templates: dict[str, str]
-    sessions: dict[str, SessionData]
-    connections: dict[str, dict[str, WebSocket]]
+    sessions: dict[str, SessionInfo]
     widgets: dict[str, AnyWidget] = field(default_factory=dict)
     allow_threaded: bool = False
+    cleanup_task: asyncio.Task[None] | None = None
 
 
 def wrap_html(key: str) -> str:
@@ -205,15 +224,67 @@ async def get_widgets(request: Request) -> dict[str, Any]:
     }
 
 
+def _raise_websocket_disconnect(code: int) -> None:
+    """Raise WebSocketDisconnect with a specific code."""
+    raise WebSocketDisconnect(code=code)
+
+
 @_app.websocket("/ws/{client_id}/{session_id}")  # type: ignore[misc]
 async def websocket_endpoint(
     websocket: WebSocket, client_id: str, session_id: str
 ) -> None:
+    """Handle WebSocket connections for real-time communication with clients."""
     await websocket.accept()
     logger.debug(f"New WebSocket connection from client {client_id}")
 
+    # Get session or send error if not found
+    session_data = await _get_session_or_error(websocket, session_id)
+    if session_data is None:
+        return
+
+    # Initialize session info and track connection
+    _register_connection(session_id, client_id, websocket, session_data)
+
     try:
-        session = await _get_session(
+        # Start the message handling tasks
+        await asyncio.gather(
+            _handle_client_messages(websocket, client_id, session_id, session_data),
+            _handle_server_messages(websocket, client_id, session_data),
+        )
+    except WebSocketDisconnect as e:
+        logger.debug(
+            f"WebSocket disconnected for client {client_id} with code {e.code}"
+        )
+        _cleanup_connection(session_id, client_id)
+
+        # Handle graceful closure
+        if (
+            session_id in _app.state.config.sessions
+            and not _app.state.config.sessions[session_id].connections
+            and e.code == NORMAL_CLOSE_CODE
+        ):
+            logger.info(
+                f"Last client disconnected gracefully, cleaning up session {session_id}"
+            )
+            await cleanup_session(session_id)
+    except asyncio.CancelledError:
+        logger.debug(f"WebSocket tasks cancelled for client {client_id}")
+        _cleanup_connection(session_id, client_id)
+
+        # Log no-connection state for timeout cleanup
+        if (
+            session_id in _app.state.config.sessions
+            and not _app.state.config.sessions[session_id].connections
+        ):
+            logger.debug(f"No more connections for session {session_id}")
+
+
+async def _get_session_or_error(
+    websocket: WebSocket, session_id: str
+) -> SessionManager | None:
+    """Get session data or send error if not found."""
+    try:
+        return await _get_session(
             allow_threaded=_app.state.config.allow_threaded,
             session_id=session_id,
             base_dir=_app.state.config.base_dir,
@@ -227,144 +298,71 @@ async def websocket_endpoint(
         error_msg = SessionErrorMessage()
         try:
             await websocket.send_text(encode_model(error_msg))
-
-        except (ValueError, TypeError, WebSocketDisconnect) as e:
+        except (ValueError, TypeError, WebSocketDisconnect):
             logger.exception("Failed to send session error message.")
+        return None
 
-        return
 
-    if session_id not in _app.state.config.connections:
-        _app.state.config.connections[session_id] = {}
+def _register_connection(
+    session_id: str, client_id: str, websocket: WebSocket, session_data: SessionManager
+) -> None:
+    """Register a new WebSocket connection and update session activity."""
+    if session_id not in _app.state.config.sessions:
+        _app.state.config.sessions[session_id] = SessionInfo(data=session_data)
 
-    _app.state.config.connections[session_id][client_id] = websocket
+    session_info = _app.state.config.sessions[session_id]
+    session_info.connections[client_id] = websocket
+    update_session_activity(session_id)
 
-    async def receive_messages() -> None:
-        try:
-            while True:
-                await handle_receive_message(websocket, client_id, session)
-        except (asyncio.CancelledError, WebSocketDisconnect):
-            logger.debug(f"Receive task cancelled for client {client_id}")
-            raise
 
-    async def send_messages() -> None:
-        """Handle sending messages to websocket clients."""
-        try:
-            # Register callback for all messages
-            handle = session.register_callback(
-                callback=lambda msg: handle_websocket_message(websocket, msg)
-            )
-
-            try:
-                # Wait indefinitely until cancelled or disconnected
-                await asyncio.Future()  # This future will never complete
-            finally:
-                # Clean up callback when done
-                session.deregister_callback(handle)
-
-        except (asyncio.CancelledError, WebSocketDisconnect):
-            logger.debug(f"Send task cancelled for client {client_id}")
-            raise
-
+async def _handle_client_messages(
+    websocket: WebSocket, client_id: str, session_id: str, session_data: SessionManager
+) -> None:
+    """Handle messages from the client to the server."""
     try:
-        await asyncio.gather(receive_messages(), send_messages())
+        while True:
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                # Normal closure has code 1000
+                close_code = message.get("code", 0)
+                logger.debug(f"Websocket disconnect with code {close_code}")
+                _raise_websocket_disconnect(close_code)
+
+            await handle_receive_message(websocket, client_id, session_data)
+            update_session_activity(session_id)
     except (asyncio.CancelledError, WebSocketDisconnect):
-        logger.debug(f"WebSocket tasks cancelled for client {client_id}")
-    finally:
-        cleanup_connection(session_id, client_id)
+        logger.debug(f"Receive task cancelled for client {client_id}")
+        raise
 
 
-async def handle_receive_message(
-    websocket: WebSocket, client_id: str, session: SessionManager
+async def _handle_server_messages(
+    websocket: WebSocket, client_id: str, session_data: SessionManager
 ) -> None:
-    message = await websocket.receive_json()
-
-    # First check if we have a message type
-    message_type = message.get("type")
-
-    if message_type in ["get-state", "get-widget-states"]:
-        # Convert to proper GetStateMessage Pydantic model
-        await session.send(
-            GetStateMessage(type=MessageType.GET_STATE).model_dump(),
-            wait_for_response=True,
-            timeout_seconds=10,
-            message_types=[MessageType.INIT_CONFIG],
-        )
-        return
-
-    # For messages that require widget_id
-    if "widget_id" not in message:
-        logger.error(f"Received message without widget_id: {message}")
-        return
-
-    msg: WidgetUpdateRequestMessage | ActionRequestMessage
-    # Convert to appropriate message type based on message_type
-    if message_type == "widget-update":
-        msg = WidgetUpdateRequestMessage(
-            type=MessageType.WIDGET_UPDATE,
-            widget_id=message["widget_id"],
-            property=message.get("property"),
-            value=message.get("value"),
-        )
-    elif message_type == "action-request":
-        msg = ActionRequestMessage(
-            type=MessageType.ACTION_REQUEST,
-            widget_id=message["widget_id"],
-            action_name=message.get("action_name", ""),
-            args=message.get("args", []),
-            kwargs=message.get("kwargs", {}),
-            client_id=client_id,
-            request_id=str(uuid.uuid4()),
-        )
-    else:
-        logger.warning(f"Unknown message type: {message_type}")
-        return
-
-    await session.send(msg.model_dump(), wait_for_response=False)
-
-
-async def handle_websocket_message(
-    websocket: WebSocket, message: dict[str, Any]
-) -> None:
-    """Handle incoming websocket messages by sending them to all connected clients."""
+    """Handle messages from the server to the client."""
     try:
-        msg_type = message.get("type")
-        if not isinstance(msg_type, str):
-            raise TypeError("Message type is not a string")  # noqa: TRY301
-
-        model: WebSocketMessage
-        if msg_type == MessageType.WIDGET_UPDATE.value:
-            model = WidgetUpdateMessage(**message)
-        elif msg_type == MessageType.ACTION_RESPONSE.value:
-            model = ActionResponseMessage(**message)
-        elif msg_type == MessageType.INIT_CONFIG.value:
-            model = InitConfigMessage(**message)
-        elif msg_type == MessageType.ERROR.value:
-            model = ErrorMessage(**message)
-        else:
-            logger.warning(f"Unknown message type: {msg_type}")
-            return
-
-        # Check if websocket is still connected before sending
-        if websocket.client_state == WebSocketState.CONNECTED:
-            try:
-                await websocket.send_text(encode_model(model))
-            except RuntimeError as e:
-                if "websocket.close" in str(e):
-                    logger.debug("Websocket already closed, cannot send message")
-                    raise WebSocketDisconnect from e
-                raise
-    except (ValueError, TypeError, WebSocketDisconnect, json.JSONDecodeError) as e:
-        logger.debug("Failed to send message - client may be disconnected")
-        raise WebSocketDisconnect from e
+        # Register callback for all messages
+        handle = session_data.register_callback(
+            callback=lambda msg: handle_websocket_message(websocket, msg)
+        )
+        try:
+            # Wait indefinitely until cancelled or disconnected
+            await asyncio.Future()  # This future will never complete
+        finally:
+            # Clean up callback when done
+            session_data.deregister_callback(handle)
+    except (asyncio.CancelledError, WebSocketDisconnect):
+        logger.debug(f"Send task cancelled for client {client_id}")
+        raise
 
 
-def cleanup_connection(session_id: str, client_id: str) -> None:
+def _cleanup_connection(session_id: str, client_id: str) -> None:
+    """Remove a client connection from a session."""
     if (
-        session_id in _app.state.config.connections
-        and client_id in _app.state.config.connections[session_id]
+        session_id in _app.state.config.sessions
+        and client_id in _app.state.config.sessions[session_id].connections
     ):
         logger.info(f"Client {client_id} disconnected")
-        del _app.state.config.connections[session_id][client_id]
+        del _app.state.config.sessions[session_id].connections[client_id]
 
 
 @_app.get("/numerous.js")  # type: ignore[misc]
@@ -438,7 +436,6 @@ def create_app(  # noqa: PLR0912, C901
             dev=dev,
             main_js=_load_main_js(),
             sessions={},
-            connections={},
             base_dir=str(BASE_DIR),
             module_path=str(module_path),
             template=template,
@@ -669,3 +666,188 @@ def _get_widget_actions(widget: AnyWidget) -> dict[str, dict[str, Any]]:
                 "doc": member.__doc__ or "",
             }
     return actions
+
+
+async def cleanup_expired_sessions() -> None:
+    """Periodically check for and cleanup expired sessions."""
+    while True:
+        try:
+            current_time = time.time()
+            session_count = len(_app.state.config.sessions)
+
+            # Determine timeout based on session count
+            timeout = (
+                OVERFLOW_SESSION_TIMEOUT
+                if session_count > MAX_SESSIONS
+                else DEFAULT_SESSION_TIMEOUT
+            )
+
+            expired_sessions = []
+            for session_id, session_info in _app.state.config.sessions.items():
+                # Check if session has expired
+                if current_time - session_info.last_active > timeout:
+                    expired_sessions.append(session_id)
+
+            # If we're over the limit, also remove oldest sessions
+            if session_count > MAX_SESSIONS:
+                # Sort sessions by last active time
+                sorted_sessions = sorted(
+                    _app.state.config.sessions.items(), key=lambda x: x[1].last_active
+                )
+                # Get the oldest sessions that put us over the limit
+                excess_count = session_count - MAX_SESSIONS
+                expired_sessions.extend(
+                    session_id
+                    for session_id, _ in sorted_sessions[:excess_count]
+                    if session_id not in expired_sessions
+                )
+
+            # Cleanup expired sessions
+            for session_id in expired_sessions:
+                await cleanup_session(session_id)
+
+        except (RuntimeError, asyncio.CancelledError):
+            logger.exception("Error in session cleanup")
+
+        await asyncio.sleep(CLEANUP_INTERVAL)
+
+
+async def cleanup_session(session_id: str) -> None:
+    """Clean up a specific session and its resources."""
+    if session_id in _app.state.config.sessions:
+        session_info = _app.state.config.sessions[session_id]
+
+        # Close all websocket connections
+        for websocket in session_info.connections.values():
+            try:
+                await websocket.close()
+            except (RuntimeError, ConnectionError) as e:
+                logger.debug(f"Error closing websocket: {e}")
+
+        # Cleanup session data
+        try:
+            await session_info.data.stop()
+        except (RuntimeError, asyncio.CancelledError, ConnectionError):
+            logger.exception("Error cleaning up session data")
+
+        # Remove session from state
+        del _app.state.config.sessions[session_id]
+        logger.info(f"Cleaned up session {session_id}")
+
+
+def update_session_activity(session_id: str) -> None:
+    """Update the last active timestamp for a session."""
+    if session_id in _app.state.config.sessions:
+        _app.state.config.sessions[session_id].last_active = time.time()
+
+
+@_app.on_event("startup")  # type: ignore[misc]
+async def start_cleanup_task() -> None:
+    """Start the session cleanup task when the app starts."""
+    _app.state.config.cleanup_task = asyncio.create_task(cleanup_expired_sessions())
+
+
+@_app.on_event("shutdown")  # type: ignore[misc]
+async def cleanup_all_sessions() -> None:
+    """Clean up all sessions when the app shuts down."""
+    if _app.state.config.cleanup_task:
+        _app.state.config.cleanup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _app.state.config.cleanup_task
+
+    # Cleanup all remaining sessions
+    session_ids = list(_app.state.config.sessions.keys())
+    for session_id in session_ids:
+        await cleanup_session(session_id)
+
+
+async def handle_receive_message(
+    websocket: WebSocket, client_id: str, session: SessionManager
+) -> None:
+    """Process incoming messages from the client websocket."""
+    message = await websocket.receive_json()
+
+    # First check if we have a message type
+    message_type = message.get("type")
+
+    if message_type in ["get-state", "get-widget-states"]:
+        # Convert to proper GetStateMessage Pydantic model
+        await session.send(
+            GetStateMessage(type=MessageType.GET_STATE).model_dump(),
+            wait_for_response=True,
+            timeout_seconds=10,
+            message_types=[MessageType.INIT_CONFIG],
+        )
+        return
+
+    # For messages that require widget_id
+    if "widget_id" not in message:
+        logger.error(f"Received message without widget_id: {message}")
+        return
+
+    msg: WidgetUpdateRequestMessage | ActionRequestMessage
+    # Convert to appropriate message type based on message_type
+    if message_type == "widget-update":
+        msg = WidgetUpdateRequestMessage(
+            type=MessageType.WIDGET_UPDATE,
+            widget_id=message["widget_id"],
+            property=message.get("property"),
+            value=message.get("value"),
+        )
+    elif message_type == "action-request":
+        msg = ActionRequestMessage(
+            type=MessageType.ACTION_REQUEST,
+            widget_id=message["widget_id"],
+            action_name=message.get("action_name", ""),
+            args=message.get("args", []),
+            kwargs=message.get("kwargs", {}),
+            client_id=client_id,
+            request_id=str(uuid.uuid4()),
+        )
+    else:
+        logger.warning(f"Unknown message type: {message_type}")
+        return
+
+    await session.send(msg.model_dump(), wait_for_response=False)
+
+
+async def handle_websocket_message(
+    websocket: WebSocket, message: dict[str, Any]
+) -> None:
+    """Handle incoming websocket messages by sending them to all connected clients."""
+    try:
+        msg_type = message.get("type")
+        if not isinstance(msg_type, str):
+            # Use helper function to abstract the raise
+            _raise_type_error("Message type is not a string")
+
+        model: WebSocketMessage
+        if msg_type == MessageType.WIDGET_UPDATE.value:
+            model = WidgetUpdateMessage(**message)
+        elif msg_type == MessageType.ACTION_RESPONSE.value:
+            model = ActionResponseMessage(**message)
+        elif msg_type == MessageType.INIT_CONFIG.value:
+            model = InitConfigMessage(**message)
+        elif msg_type == MessageType.ERROR.value:
+            model = ErrorMessage(**message)
+        else:
+            logger.warning(f"Unknown message type: {msg_type}")
+            return
+
+        # Check if websocket is still connected before sending
+        if websocket.client_state == WebSocketState.CONNECTED:
+            try:
+                await websocket.send_text(encode_model(model))
+            except RuntimeError as e:
+                if "websocket.close" in str(e):
+                    logger.debug("Websocket already closed, cannot send message")
+                    raise WebSocketDisconnect from e
+                raise
+    except (ValueError, TypeError, WebSocketDisconnect, json.JSONDecodeError):
+        logger.debug("Failed to send message - client may be disconnected")
+        raise WebSocketDisconnect from None
+
+
+def _raise_type_error(message: str) -> None:
+    """Raise TypeError with the provided message."""
+    raise TypeError(message)
