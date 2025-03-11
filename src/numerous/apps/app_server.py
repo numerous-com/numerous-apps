@@ -201,7 +201,7 @@ async def get_widgets(request: Request) -> dict[str, Any]:
             _app.state.config.module_path,
             _app.state.config.template,
         )
-        logger.info(f"Session ID: {session_id}")
+        logger.debug(f"Session ID: {session_id}")
 
         # Fetch app definition with retries
         app_definition = await _fetch_app_definition_with_retry(session)
@@ -261,7 +261,7 @@ async def _fetch_app_definition_with_retry(
         try:
             # Increase timeout with each attempt
             current_timeout = base_timeout * attempt
-            logger.info(
+            logger.debug(
                 f"Attempt {attempt}/{max_attempts} for app definition "
                 f"(timeout: {current_timeout}s)"
             )
@@ -338,7 +338,7 @@ async def websocket_endpoint(
             and not _app.state.config.sessions[session_id].connections
             and e.code == NORMAL_CLOSE_CODE
         ):
-            logger.info(
+            logger.debug(
                 f"Last client disconnected gracefully, cleaning up session {session_id}"
             )
             await cleanup_session(session_id)
@@ -436,7 +436,7 @@ def _cleanup_connection(session_id: str, client_id: str) -> None:
         session_id in _app.state.config.sessions
         and client_id in _app.state.config.sessions[session_id].connections
     ):
-        logger.info(f"Client {client_id} disconnected")
+        logger.debug(f"Client {client_id} disconnected")
         del _app.state.config.sessions[session_id].connections[client_id]
 
 
@@ -489,7 +489,7 @@ def create_app(  # noqa: PLR0912, C901
         allow_threaded = True
         widgets = app_generator()
 
-    logger.info(
+    logger.debug(
         f"App instances will be {'threaded' if allow_threaded else 'multiprocessed'}"
     )
     if not is_process:
@@ -807,7 +807,7 @@ async def cleanup_session(session_id: str) -> None:
 
         # Remove session from state
         del _app.state.config.sessions[session_id]
-        logger.info(f"Cleaned up session {session_id}")
+        logger.debug(f"Cleaned up session {session_id}")
 
 
 def update_session_activity(session_id: str) -> None:
@@ -838,7 +838,7 @@ async def cleanup_all_sessions() -> None:
 
 async def _handle_get_widget_states(_: WebSocket, session: SessionManager) -> None:
     """Handle a request to get all widget states."""
-    logger.info("Client requested refresh of all widget states")
+    logger.debug("Client requested refresh of all widget states")
     await session.send(
         GetStateMessage(type=MessageType.GET_STATE).model_dump(),
         wait_for_response=True,
@@ -856,7 +856,7 @@ async def _handle_get_widget_state(
         logger.error("Received get-widget-state without widget_id")
         return
 
-    logger.info(f"Client requested refresh of widget state: {widget_id}")
+    logger.debug(f"Client requested refresh of widget state: {widget_id}")
 
     # Get the widget state
     widget_state = session.get_widget_state(WidgetId(widget_id))
@@ -895,7 +895,7 @@ async def _handle_batch_update(
         return
 
     prop_count = len(properties)
-    logger.info(
+    logger.debug(
         f"Processing batch update for widget {widget_id} with {prop_count} properties"
     )
 
@@ -1017,7 +1017,7 @@ async def handle_websocket_message(
     """Handle incoming websocket messages by sending them to all connected clients."""
     try:
         msg_type = message.get("type")
-        logger.info(f"Processing websocket message of type: {msg_type}")
+        logger.debug(f"Processing websocket message of type: {msg_type}")
 
         if not isinstance(msg_type, str):
             # Use helper function to abstract the raise
@@ -1051,7 +1051,7 @@ def _create_message_model(
         widget_id = model.widget_id
         property_name = model.property
         value = model.value
-        logger.info(
+        logger.debug(
             f"Sending widget update: widget={widget_id}, property={property_name}, "
             f"value={value}"
         )
@@ -1063,7 +1063,7 @@ def _create_message_model(
         model = ErrorMessage(**message)
     elif msg_type == "widget-batch-update":
         # For batch updates, create a proper model
-        logger.info(f"Processing batch update for widget {message.get('widget_id')}")
+        logger.debug(f"Processing batch update for widget {message.get('widget_id')}")
         model = WebSocketBatchUpdateMessage(**message)
     elif msg_type == MessageType.SESSION_ERROR.value:
         model = SessionErrorMessage(**message)
@@ -1083,7 +1083,7 @@ async def _send_websocket_message(
             encoded_model = encode_model(model)
             logger.debug(f"Sending encoded message: {encoded_model[:100]}...")
             await websocket.send_text(encoded_model)
-            logger.info(f"Successfully sent {msg_type} message to client")
+            logger.debug(f"Successfully sent {msg_type} message to client")
         except RuntimeError as e:
             if "websocket.close" in str(e):
                 logger.debug("Websocket already closed, cannot send message")

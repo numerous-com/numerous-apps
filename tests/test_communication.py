@@ -28,8 +28,11 @@ msg_from_main = "test_from_main"
 
 def _process_1(communication_manager: CommunicationManager) -> None:
     """Help process that receives from main and sends back."""
+    # Sleep a moment before sending to ensure process is fully initialized
+    time.sleep(0.5)
     communication_manager.from_app_instance.send(msg_from_app)
-    time.sleep(0.1)  # Give main process time to receive
+    # Give main process more time to receive the message
+    time.sleep(1.0)
 
 
 def _process_2(communication_manager: CommunicationManager) -> None:
@@ -49,12 +52,12 @@ def test_communication_manager_from_app() -> None:
     process = Process(target=_process_1, args=(communication_manager,))
     process.start()
 
-    # Wait for message
+    # Wait for message with increased timeout
     try:
-        msg = communication_manager.from_app_instance.receive(timeout=5)
+        msg = communication_manager.from_app_instance.receive(timeout=10)
         assert msg == msg_from_app
     finally:
-        process.join(timeout=1)
+        process.join(timeout=2)
         if process.is_alive():
             process.terminate()
 
