@@ -2,6 +2,19 @@
 
 
 
+## v0.2.1 (2025-03-11)
+
+### Fix
+
+* fix(app_server): Improve widget configuration retrieval with robust error handling
+
+Add retry mechanism and enhanced error handling for fetching app definitions, including:
+- Configurable retry attempts with increasing timeouts
+- Detailed logging for initialization failures
+- Graceful error responses for timeout and initialization issues
+- Improved exception handling and logging ([`77d804b`](https://github.com/numerous-com/numerous-apps/commit/77d804b6f92584040c09fa75c0210fec0fb803ef))
+
+
 ## v0.2.0 (2025-03-11)
 
 ### Feature
