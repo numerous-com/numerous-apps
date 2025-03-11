@@ -189,39 +189,113 @@ async def home(request: Request) -> Response:
 
 @_app.get("/api/widgets")  # type: ignore[misc]
 async def get_widgets(request: Request) -> dict[str, Any]:
+    """Get widget configurations for the session."""
     session_id = request.query_params.get("session_id")
-    session = await _get_session(
-        _app.state.config.allow_threaded,
-        session_id,
-        _app.state.config.base_dir,
-        _app.state.config.module_path,
-        _app.state.config.template,
+    try:
+        # Get session
+        session = await _get_session(
+            _app.state.config.allow_threaded,
+            session_id,
+            _app.state.config.base_dir,
+            _app.state.config.module_path,
+            _app.state.config.template,
+        )
+        logger.info(f"Session ID: {session_id}")
+
+        # Fetch app definition with retries
+        app_definition = await _fetch_app_definition_with_retry(session)
+
+        # Process widget configs
+        for config in app_definition["widget_configs"].values():
+            if "defaults" in config:
+                config["defaults"] = json.loads(config["defaults"])
+
+        # Convert to proper model
+        init_config = InitConfigMessage(**app_definition)
+
+    except TimeoutError:
+        logger.exception(f"Timeout getting app definition for session {session_id}")
+        raise HTTPException(
+            status_code=504,
+            detail="Timeout waiting for application to initialize. Please refresh.",
+        ) from None
+    except Exception as e:
+        logger.exception("Error getting widgets for session")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to initialize application. Please try again.",
+        ) from e
+    else:
+        # Return the response - only executed if no exceptions occur
+        return {
+            "session_id": session.session_id,
+            "widgets": init_config.widget_configs,
+            "logLevel": "DEBUG" if _app.state.config.dev else "ERROR",
+        }
+
+
+async def _fetch_app_definition_with_retry(
+    session: SessionManager,
+) -> dict[str, Any]:
+    """
+    Fetch app definition from the session with retry logic.
+
+    Args:
+        session: The session manager instance
+
+    Returns:
+        The app definition dictionary
+
+    Raises:
+        TimeoutError: If all attempts timeout
+        Exception: For other errors during fetching
+
+    """
+    # Try up to 2 times with increasing timeout
+    app_definition = None
+    max_attempts = 2
+    base_timeout = 10
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            # Increase timeout with each attempt
+            current_timeout = base_timeout * attempt
+            logger.info(
+                f"Attempt {attempt}/{max_attempts} for app definition "
+                f"(timeout: {current_timeout}s)"
+            )
+
+            app_definition = await session.send(
+                GetStateMessage(type=MessageType.GET_STATE).model_dump(),
+                wait_for_response=True,
+                timeout_seconds=current_timeout,
+                message_types=[MessageType.INIT_CONFIG],
+            )
+
+            if app_definition is not None:
+                return app_definition
+
+        except TimeoutError:
+            logger.warning(
+                f"Timeout on attempt {attempt}/{max_attempts} for app definition"
+            )
+            if attempt == max_attempts:
+                raise
+            # Brief pause before retry
+            await asyncio.sleep(0.5)
+        except Exception:
+            logger.exception(
+                f"Error on attempt {attempt}/{max_attempts} for app definition"
+            )
+            if attempt == max_attempts:
+                raise
+            await asyncio.sleep(0.5)
+
+    # If we got here, we didn't get a valid app definition
+    raise HTTPException(
+        status_code=500,
+        detail="Failed to get app definition after multiple attempts.",
     )
-
-    logger.info(f"Session ID: {session_id}")
-
-    _app_definition = await session.send(
-        GetStateMessage(type=MessageType.GET_STATE).model_dump(),
-        wait_for_response=True,
-        timeout_seconds=10,
-        message_types=[MessageType.INIT_CONFIG],
-    )
-
-    if _app_definition is None:
-        raise HTTPException(status_code=500, detail="No app definition request failed.")
-
-    for config in _app_definition["widget_configs"].values():
-        if "defaults" in config:
-            config["defaults"] = json.loads(config["defaults"])
-
-    # Convert to InitConfigMessage if it's not already
-    app_definition = InitConfigMessage(**_app_definition)
-
-    return {
-        "session_id": session.session_id,
-        "widgets": app_definition.widget_configs,
-        "logLevel": "DEBUG" if _app.state.config.dev else "ERROR",
-    }
 
 
 def _raise_websocket_disconnect(code: int) -> None:
