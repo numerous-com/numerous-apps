@@ -11,7 +11,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from inspect import getmembers
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import jinja2
 from anywidget import AnyWidget
@@ -38,6 +38,7 @@ from .models import (
     SetTraitValue,
     TemplateDescription,
     TraitValue,
+    WebSocketBatchUpdateMessage,
     WebSocketMessage,
     WidgetUpdateMessage,
     WidgetUpdateRequestMessage,
@@ -49,7 +50,7 @@ from .server import (
     _get_template,
     _load_main_js,
 )
-from .session_management import SessionManager
+from .session_management import SessionManager, WidgetId
 
 
 # Session management constants
@@ -835,6 +836,151 @@ async def cleanup_all_sessions() -> None:
         await cleanup_session(session_id)
 
 
+async def _handle_get_widget_states(_: WebSocket, session: SessionManager) -> None:
+    """Handle a request to get all widget states."""
+    logger.info("Client requested refresh of all widget states")
+    await session.send(
+        GetStateMessage(type=MessageType.GET_STATE).model_dump(),
+        wait_for_response=True,
+        timeout_seconds=10,
+        message_types=[MessageType.INIT_CONFIG],
+    )
+    # Note: websocket parameter used for API consistency
+
+
+async def _handle_get_widget_state(
+    websocket: WebSocket, session: SessionManager, widget_id: str
+) -> None:
+    """Handle a request to get a specific widget's state."""
+    if not widget_id:
+        logger.error("Received get-widget-state without widget_id")
+        return
+
+    logger.info(f"Client requested refresh of widget state: {widget_id}")
+
+    # Get the widget state
+    widget_state = session.get_widget_state(WidgetId(widget_id))
+
+    # Send each property as a separate update
+    for property_name, value in widget_state.items():
+        update_msg = WidgetUpdateMessage(
+            type=MessageType.WIDGET_UPDATE.value,
+            widget_id=widget_id,
+            property=property_name,
+            value=value,
+        )
+
+        try:
+            await handle_websocket_message(websocket, update_msg.model_dump())
+        except Exception:
+            logger.exception(
+                f"Error sending widget state update for {widget_id}.{property_name}"
+            )
+
+
+async def _handle_batch_update(
+    websocket: WebSocket, session: SessionManager, message: dict[str, Any]
+) -> None:
+    """Handle a batch update request for multiple widget properties."""
+    widget_id = message.get("widget_id")
+    properties = message.get("properties", {})
+    request_id = message.get("request_id")
+
+    if not widget_id:
+        logger.error("Received batch update without widget_id")
+        return
+
+    if not properties:
+        logger.warning(f"Received empty batch update for widget {widget_id}")
+        return
+
+    prop_count = len(properties)
+    logger.info(
+        f"Processing batch update for widget {widget_id} with {prop_count} properties"
+    )
+
+    # Process each property in the batch
+    for property_name, value in properties.items():
+        # Create a regular widget update for each property
+        update_msg = WidgetUpdateRequestMessage(
+            type=MessageType.WIDGET_UPDATE,
+            widget_id=widget_id,
+            property=str(property_name),  # Ensure property is str
+            value=value,
+        )
+
+        # Send each update to the session
+        await session.send(update_msg.model_dump(), wait_for_response=False)
+
+    # Send a batch confirmation back to the client
+    if request_id:
+        confirmation_msg = WebSocketBatchUpdateMessage(
+            type="widget-batch-update",
+            widget_id=widget_id,
+            properties=properties,
+            request_id=request_id,
+        )
+        try:
+            await websocket.send_text(encode_model(confirmation_msg))
+            logger.debug(f"Sent batch update confirmation for request {request_id}")
+        except Exception:
+            logger.exception("Error sending batch update confirmation")
+
+
+async def _handle_widget_update(
+    websocket: WebSocket, session: SessionManager, message: dict[str, Any]
+) -> None:
+    """Handle an update to a single widget property."""
+    property_value = message.get("property", "")
+    property_name = str(property_value) if property_value is not None else ""
+
+    msg = WidgetUpdateRequestMessage(
+        type=MessageType.WIDGET_UPDATE,
+        widget_id=message["widget_id"],
+        property=property_name,
+        value=message.get("value"),
+    )
+
+    # Preserve request_id if provided for confirmation
+    request_id = message.get("request_id")
+
+    # Send to session for processing
+    await session.send(msg.model_dump(), wait_for_response=False)
+
+    # Echo back the update with the request_id for client confirmation
+    if request_id:
+        echo_msg = WidgetUpdateMessage(
+            type=MessageType.WIDGET_UPDATE.value,
+            widget_id=message["widget_id"],
+            property=property_name,
+            value=message.get("value"),
+            request_id=request_id,
+        )
+        try:
+            await websocket.send_text(encode_model(echo_msg))
+            logger.debug(f"Echoed update confirmation for request {request_id}")
+        except Exception:
+            logger.exception("Error sending update confirmation")
+
+
+async def _handle_action_request(
+    session: SessionManager, message: dict[str, Any], client_id: str
+) -> None:
+    """Handle a widget action request."""
+    # Note: websocket parameter removed as it was unused
+    msg = ActionRequestMessage(
+        type=MessageType.ACTION_REQUEST,
+        widget_id=message["widget_id"],
+        action_name=message.get("action_name", ""),
+        args=message.get("args", []),
+        kwargs=message.get("kwargs", {}),
+        client_id=client_id,
+        request_id=str(uuid.uuid4()),
+    )
+    await session.send(msg.model_dump(), wait_for_response=False)
+
+
+# Main message handler with reduced complexity
 async def handle_receive_message(
     websocket: WebSocket, client_id: str, session: SessionManager
 ) -> None:
@@ -844,45 +990,25 @@ async def handle_receive_message(
     # First check if we have a message type
     message_type = message.get("type")
 
-    if message_type in ["get-state", "get-widget-states"]:
-        # Convert to proper GetStateMessage Pydantic model
-        await session.send(
-            GetStateMessage(type=MessageType.GET_STATE).model_dump(),
-            wait_for_response=True,
-            timeout_seconds=10,
-            message_types=[MessageType.INIT_CONFIG],
-        )
-        return
-
-    # For messages that require widget_id
-    if "widget_id" not in message:
+    # Early validation for widget_id when required
+    non_widget_types = ["get-widget-states", "get-widget-state"]
+    if message_type not in non_widget_types and "widget_id" not in message:
         logger.error(f"Received message without widget_id: {message}")
         return
 
-    msg: WidgetUpdateRequestMessage | ActionRequestMessage
-    # Convert to appropriate message type based on message_type
-    if message_type == "widget-update":
-        msg = WidgetUpdateRequestMessage(
-            type=MessageType.WIDGET_UPDATE,
-            widget_id=message["widget_id"],
-            property=message.get("property"),
-            value=message.get("value"),
-        )
+    # Dispatch to appropriate handler based on message type
+    if message_type == "get-widget-states":
+        await _handle_get_widget_states(websocket, session)
+    elif message_type == "get-widget-state":
+        await _handle_get_widget_state(websocket, session, message.get("widget_id"))
+    elif message_type == "widget-batch-update":
+        await _handle_batch_update(websocket, session, message)
+    elif message_type == "widget-update":
+        await _handle_widget_update(websocket, session, message)
     elif message_type == "action-request":
-        msg = ActionRequestMessage(
-            type=MessageType.ACTION_REQUEST,
-            widget_id=message["widget_id"],
-            action_name=message.get("action_name", ""),
-            args=message.get("args", []),
-            kwargs=message.get("kwargs", {}),
-            client_id=client_id,
-            request_id=str(uuid.uuid4()),
-        )
+        await _handle_action_request(session, message, client_id)
     else:
         logger.warning(f"Unknown message type: {message_type}")
-        return
-
-    await session.send(msg.model_dump(), wait_for_response=False)
 
 
 async def handle_websocket_message(
@@ -891,35 +1017,83 @@ async def handle_websocket_message(
     """Handle incoming websocket messages by sending them to all connected clients."""
     try:
         msg_type = message.get("type")
+        logger.info(f"Processing websocket message of type: {msg_type}")
+
         if not isinstance(msg_type, str):
             # Use helper function to abstract the raise
             _raise_type_error("Message type is not a string")
 
-        model: WebSocketMessage
-        if msg_type == MessageType.WIDGET_UPDATE.value:
-            model = WidgetUpdateMessage(**message)
-        elif msg_type == MessageType.ACTION_RESPONSE.value:
-            model = ActionResponseMessage(**message)
-        elif msg_type == MessageType.INIT_CONFIG.value:
-            model = InitConfigMessage(**message)
-        elif msg_type == MessageType.ERROR.value:
-            model = ErrorMessage(**message)
-        else:
-            logger.warning(f"Unknown message type: {msg_type}")
+        # At this point msg_type is guaranteed to be a string due to the check above
+        msg_type_str = cast(str, msg_type)  # Properly cast for mypy
+
+        model = _create_message_model(msg_type_str, message)
+        if model is None:
             return
 
-        # Check if websocket is still connected before sending
-        if websocket.client_state == WebSocketState.CONNECTED:
-            try:
-                await websocket.send_text(encode_model(model))
-            except RuntimeError as e:
-                if "websocket.close" in str(e):
-                    logger.debug("Websocket already closed, cannot send message")
-                    raise WebSocketDisconnect from e
-                raise
-    except (ValueError, TypeError, WebSocketDisconnect, json.JSONDecodeError):
+        await _send_websocket_message(websocket, model, msg_type_str)
+    except (ValueError, TypeError):
+        logger.exception("Error processing message")
+        raise WebSocketDisconnect from None
+    except (WebSocketDisconnect, json.JSONDecodeError):
         logger.debug("Failed to send message - client may be disconnected")
         raise WebSocketDisconnect from None
+
+
+def _create_message_model(
+    msg_type: str, message: dict[str, Any]
+) -> WebSocketMessage | None:
+    """Create the appropriate message model based on the message type."""
+    model: WebSocketMessage | None = None
+
+    # Map message types to their corresponding model classes
+    if msg_type == MessageType.WIDGET_UPDATE.value:
+        model = WidgetUpdateMessage(**message)
+        widget_id = model.widget_id
+        property_name = model.property
+        value = model.value
+        logger.info(
+            f"Sending widget update: widget={widget_id}, property={property_name}, "
+            f"value={value}"
+        )
+    elif msg_type == MessageType.ACTION_RESPONSE.value:
+        model = ActionResponseMessage(**message)
+    elif msg_type == MessageType.INIT_CONFIG.value:
+        model = InitConfigMessage(**message)
+    elif msg_type == MessageType.ERROR.value:
+        model = ErrorMessage(**message)
+    elif msg_type == "widget-batch-update":
+        # For batch updates, create a proper model
+        logger.info(f"Processing batch update for widget {message.get('widget_id')}")
+        model = WebSocketBatchUpdateMessage(**message)
+    elif msg_type == MessageType.SESSION_ERROR.value:
+        model = SessionErrorMessage(**message)
+    else:
+        logger.warning(f"Unknown message type: {msg_type}")
+
+    return model
+
+
+async def _send_websocket_message(
+    websocket: WebSocket, model: WebSocketMessage, msg_type: str
+) -> None:
+    """Send a message to the client if the websocket is still connected."""
+    # Check if websocket is still connected before sending
+    if websocket.client_state == WebSocketState.CONNECTED:
+        try:
+            encoded_model = encode_model(model)
+            logger.debug(f"Sending encoded message: {encoded_model[:100]}...")
+            await websocket.send_text(encoded_model)
+            logger.info(f"Successfully sent {msg_type} message to client")
+        except RuntimeError as e:
+            if "websocket.close" in str(e):
+                logger.debug("Websocket already closed, cannot send message")
+                raise WebSocketDisconnect from e
+            logger.exception("Error sending message")
+            raise
+    else:
+        logger.warning(
+            f"Cannot send message - websocket in state {websocket.client_state}"
+        )
 
 
 def _raise_type_error(message: str) -> None:

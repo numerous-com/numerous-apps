@@ -58,6 +58,7 @@ class WidgetUpdateMessage(BaseModel):
     property: str
     value: Any
     client_id: str | None = None
+    request_id: str | None = None
 
 
 class InitConfigMessage(BaseModel):
@@ -165,6 +166,15 @@ class WidgetUpdateRequestMessage(BaseModel):
     value: Any
 
 
+class WebSocketBatchUpdateMessage(BaseModel):
+    """Message for batch update of multiple widget properties."""
+
+    type: str = "widget-batch-update"
+    widget_id: str
+    properties: dict[str, Any]
+    request_id: str | None = None
+
+
 class HandlerResponse(BaseModel):
     """Base class for all handler responses."""
 
@@ -208,5 +218,10 @@ class SessionErrorMessage(BaseModel):
 
 
 WebSocketMessage = (
-    WidgetUpdateMessage | ActionResponseMessage | InitConfigMessage | ErrorMessage
+    WidgetUpdateMessage
+    | ActionResponseMessage
+    | InitConfigMessage
+    | ErrorMessage
+    | WebSocketBatchUpdateMessage
+    | SessionErrorMessage
 )

@@ -8,6 +8,32 @@ const LOG_LEVELS = {
 };
 let currentLogLevel = LOG_LEVELS.ERROR; // Default log level
 
+// Set debug level based on URL parameters
+function initializeDebugging() {
+    // Check for debug parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugParam = urlParams.get('debug');
+    
+    if (debugParam === 'true' || debugParam === '1') {
+        currentLogLevel = LOG_LEVELS.DEBUG;
+        console.info('Debug logging enabled');
+    }
+    
+    // Also check for localStorage debug preference
+    try {
+        const storedLevel = localStorage.getItem('numerousLogLevel');
+        if (storedLevel && LOG_LEVELS[storedLevel] !== undefined) {
+            currentLogLevel = LOG_LEVELS[storedLevel];
+            console.info(`Log level set from localStorage: ${storedLevel}`);
+        }
+    } catch (e) {
+        // Ignore localStorage errors
+    }
+}
+
+// Initialize debugging
+initializeDebugging();
+
 // Add this logging utility function
 function log(level, ...args) {
     if (level >= currentLogLevel) {
@@ -37,8 +63,12 @@ const MessageType = {
     ACTION_RESPONSE: 'action-response',
     ERROR: 'error',
     INIT_CONFIG: 'init-config',
-    SESSION_ERROR: 'session-error'
+    SESSION_ERROR: 'session-error',
+    WIDGET_BATCH_UPDATE: 'widget-batch-update'  // Add batch update type
 };
+
+// Add this near the top of the file, after MessageType definition
+let observerRegistrations = new Map(); // Store observer registration functions
 
 // Create a Model class instead of a single model object
 class WidgetModel {
@@ -48,7 +78,17 @@ class WidgetModel {
         this._callbacks = {};
         this._initializing = true; // Flag to indicate initial setup
         this._pendingChanges = new Map(); // Store changes that happen during initialization
+        this._lastSyncedValues = {}; // Track last synced values
+        this._changedProperties = new Set(); // Track properties that have changed since last sync
+        this._pendingRequests = new Map(); // Track pending update requests by property
+        this._lastRequestId = 0; // Counter for generating request IDs
+        this._lockUpdates = false; // Lock for preventing overlapping batch operations
         log(LOG_LEVELS.DEBUG, `[WidgetModel] Created for widget ${widgetId}`);
+    }
+    
+    // Generate a unique request ID for tracking updates
+    _generateRequestId() {
+        return `${this.widgetId}-${++this._lastRequestId}-${Date.now()}`;
     }
     
     set(key, value, suppressSync = false) {
@@ -58,20 +98,54 @@ class WidgetModel {
         // Only trigger if value actually changed
         const valueChanged = oldValue !== value;
         
+        // Always update the value
         this.data[key] = value;
 
+        // Check if this is a form control property like 'val', 'checked', etc.
+        const isFormControl = ['val', 'checked', 'value', 'selected'].includes(key);
+
+        // Trigger change event if the value changed
         if (valueChanged) {
+            log(LOG_LEVELS.DEBUG, `[WidgetModel] Value changed, triggering event for ${key}`);
             this.trigger('change:' + key, value);
+            // Also trigger a general change event
+            this.trigger('change', { key, value, oldValue });
+            
+            // Mark property as changed for batching
+            this._changedProperties.add(key);
+            
+            // For form controls, ensure a more aggressive event triggering to handle checkbox issues
+            if (isFormControl) {
+                // Use setTimeout to ensure DOM is updated before triggering another event
+                setTimeout(() => {
+                    this.trigger('change:' + key, value); 
+                    this.trigger('change', { key, value, oldValue });
+                }, 0);
+            }
+        } else {
+            log(LOG_LEVELS.DEBUG, `[WidgetModel] Value unchanged for ${key}`);
         }
         
         // Sync with server if not suppressed
-        if (!suppressSync && !this._suppressSync) {
-            log(LOG_LEVELS.DEBUG, `[WidgetModel] Sending update to server`);
-            wsManager.sendUpdate(this.widgetId, key, value);
+        if (!suppressSync && !this._suppressSync && !this._lockUpdates) {
+            log(LOG_LEVELS.DEBUG, `[WidgetModel] Sending update to server for ${key}=${value}`);
+            if (typeof wsManager !== 'undefined' && wsManager) {
+                // Generate request ID for tracking this update
+                const requestId = this._generateRequestId();
+                this._pendingRequests.set(key, requestId);
+                
+                wsManager.sendUpdate(this.widgetId, key, value, requestId);
+                // Update last synced value - only when confirmed by server
+                // this._lastSyncedValues[key] = value;
+            } else {
+                log(LOG_LEVELS.WARN, `[WidgetModel] Cannot send update - wsManager is not defined`);
+            }
         } else if (this._initializing && !suppressSync) {
             // If we're initializing and change isn't suppressed, store for later sync
             log(LOG_LEVELS.DEBUG, `[WidgetModel] Queuing change for later: ${key}=${value}`);
             this._pendingChanges.set(key, value);
+        } else {
+            log(LOG_LEVELS.DEBUG, `[WidgetModel] Skipping server sync for ${key}=${value} (suppressSync=${suppressSync}, _suppressSync=${this._suppressSync}, _lockUpdates=${this._lockUpdates})`);
         }
     }
     
@@ -82,12 +156,55 @@ class WidgetModel {
         log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Completing initialization, processing ${this._pendingChanges.size} pending changes`);
         this._initializing = false;
         
-        // Send any pending changes
-        for (const [key, value] of this._pendingChanges.entries()) {
-            wsManager.sendUpdate(this.widgetId, key, value);
+        if (this._pendingChanges.size > 0) {
+            // Create a batch update for pending changes
+            const batchData = {};
+            for (const [key, value] of this._pendingChanges.entries()) {
+                batchData[key] = value;
+                this._lastSyncedValues[key] = value;
+            }
+            
+            // Send batch update if we have multiple changes
+            if (Object.keys(batchData).length > 1 && typeof wsManager !== 'undefined' && wsManager.batchUpdate) {
+                const batchRequestId = this._generateRequestId();
+                // Track all properties in this batch with the same request ID
+                for (const key of Object.keys(batchData)) {
+                    this._pendingRequests.set(key, batchRequestId);
+                }
+                wsManager.batchUpdate(this.widgetId, batchData, batchRequestId);
+            } else {
+                // Fall back to individual updates
+                for (const [key, value] of this._pendingChanges.entries()) {
+                    const requestId = this._generateRequestId();
+                    this._pendingRequests.set(key, requestId);
+                    wsManager.sendUpdate(this.widgetId, key, value, requestId);
+                }
+            }
         }
         
         this._pendingChanges.clear();
+        this._changedProperties.clear();
+    }
+    
+    // Handle update confirmation from server
+    confirmUpdate(key, value, requestId) {
+        // Check if this is the most recent request for this property
+        if (this._pendingRequests.get(key) === requestId) {
+            // Update the last synced value
+            this._lastSyncedValues[key] = value;
+            // Remove from pending requests
+            this._pendingRequests.delete(key);
+            log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Confirmed update for ${key} (request ${requestId})`);
+        } else {
+            log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Ignoring outdated confirmation for ${key} (request ${requestId})`);
+        }
+    }
+    
+    // Confirm a batch update
+    confirmBatchUpdate(properties, requestId) {
+        for (const [key, value] of Object.entries(properties)) {
+            this.confirmUpdate(key, value, requestId);
+        }
     }
     
     get(key) {
@@ -100,11 +217,59 @@ class WidgetModel {
         // If we're still initializing, mark initialization as complete
         if (this._initializing) {
             this.completeInitialization();
-        } else {
-            // Otherwise, send all current values to server
-            for (const [key, value] of Object.entries(this.data)) {
-                wsManager.sendUpdate(this.widgetId, key, value);
+            return;
+        }
+        
+        // Check if we have any changed properties that need syncing
+        if (this._changedProperties.size > 0) {
+            // Set lock to prevent individual updates during batch operation
+            this._lockUpdates = true;
+            
+            try {
+                log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Found ${this._changedProperties.size} changed properties to sync`);
+                
+                // Prepare batch update if supported
+                const changedData = {};
+                let changesDetected = false;
+                
+                // Only send values that have changed since last sync
+                for (const key of this._changedProperties) {
+                    const value = this.data[key];
+                    // Double check if it actually differs from last synced value
+                    if (this._lastSyncedValues[key] !== value) {
+                        changedData[key] = value;
+                        changesDetected = true;
+                    }
+                }
+                
+                if (changesDetected) {
+                    // Use batch update for efficiency when multiple properties are changed
+                    if (Object.keys(changedData).length > 1 && typeof wsManager !== 'undefined' && wsManager.batchUpdate) {
+                        const batchRequestId = this._generateRequestId();
+                        // Track all properties in this batch with the same request ID
+                        for (const key of Object.keys(changedData)) {
+                            this._pendingRequests.set(key, batchRequestId);
+                        }
+                        wsManager.batchUpdate(this.widgetId, changedData, batchRequestId);
+                    } else {
+                        // Fall back to individual updates for compatibility or single property changes
+                        for (const [key, value] of Object.entries(changedData)) {
+                            const requestId = this._generateRequestId();
+                            this._pendingRequests.set(key, requestId);
+                            wsManager.sendUpdate(this.widgetId, key, value, requestId);
+                        }
+                    }
+                } else {
+                    log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] No actual changes to sync after checking`);
+                }
+            } finally {
+                // Clear changed properties after sync
+                this._changedProperties.clear();
+                // Release the lock
+                this._lockUpdates = false;
             }
+        } else {
+            log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] No changed properties to sync`);
         }
     }
 
@@ -142,6 +307,14 @@ class WidgetModel {
     send(content, callbacks, buffers) {
         log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Sending message:`, content);
         // Implement message sending if needed
+    }
+
+    // Add a method to WidgetModel to register observers in a way they can be re-registered later
+    registerObservers(registerFn) {
+        observerRegistrations.set(this.widgetId, registerFn);
+        // Execute the registration function now
+        registerFn();
+        log(LOG_LEVELS.DEBUG, `[WidgetModel ${this.widgetId}] Registered observers with re-registration capability`);
     }
 }
 
@@ -317,6 +490,36 @@ async function initializeWidgets() {
 // Initialize widgets when the document is loaded
 document.addEventListener('DOMContentLoaded', initializeWidgets); 
 
+// Expose our refresh functions to the window object for external use
+window.numerousRefresh = {
+    refreshWidget: refreshWidgetState,
+    
+    // Function to re-register observers for a specific widget
+    reregisterObservers: function(widgetId) {
+        if (widgetId && observerRegistrations.has(widgetId)) {
+            log(LOG_LEVELS.INFO, `Manually re-registering observers for widget ${widgetId}`);
+            observerRegistrations.get(widgetId)();
+            return true;
+        } else if (!widgetId) {
+            // Re-register all observers
+            log(LOG_LEVELS.INFO, "Re-registering all observers");
+            let count = 0;
+            for (const [widgetId, registerFn] of observerRegistrations.entries()) {
+                registerFn();
+                count++;
+            }
+            return count > 0;
+        }
+        return false;
+    },
+    
+    // Force full reload of widget data from server
+    reloadWidgetData: function(widgetId) {
+        log(LOG_LEVELS.INFO, `Forcing reload of data for widget ${widgetId || 'all'}`);
+        return refreshWidgetState(widgetId);
+    }
+};
+
 // Add WebSocket connection management
 class WebSocketManager {
     constructor(sessionId) {
@@ -386,15 +589,77 @@ class WebSocketManager {
                         // Handle widget updates from both actions and direct changes
                         const model = this.widgetModels.get(message.widget_id);
                         if (model) {
-                            log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Updating widget ${message.widget_id}: ${message.property} = ${message.value}`);
-                            // Update the model without triggering a send back to server
-                            model.set(message.property, message.value, true);
+                            log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Updating widget ${message.widget_id}: ${message.property} = ${message.value}`);
                             
-                            // Also trigger a general update event that widgets can listen to
-                            model.trigger('update', {
-                                property: message.property,
-                                value: message.value
-                            });
+                            // Set a flag to prevent recursive updates
+                            model._suppressSync = true;
+                            try {
+                                // Update the model without triggering a send back to server
+                                model.set(message.property, message.value, true);
+                                
+                                // Confirm the update if this is a response to our request
+                                if (message.request_id) {
+                                    model.confirmUpdate(message.property, message.value, message.request_id);
+                                }
+                                
+                                // Also trigger a general update event that widgets can listen to
+                                model.trigger('update', {
+                                    property: message.property,
+                                    value: message.value,
+                                    request_id: message.request_id
+                                });
+                                
+                                // Special handling for checkbox and form elements which often lose observers
+                                // This improves reliability of checkboxes like GDPR consent buttons
+                                const isFormElement = ['val', 'checked', 'value', 'selected'].includes(message.property);
+                                
+                                // Call any registered observer setup functions for this widget
+                                if (observerRegistrations.has(message.widget_id)) {
+                                    if (isFormElement) {
+                                        log(LOG_LEVELS.DEBUG, `Re-registering observers for form element ${message.widget_id}.${message.property}`);
+                                        // Use setTimeout to ensure the DOM is updated before re-registering
+                                        setTimeout(() => {
+                                            observerRegistrations.get(message.widget_id)();
+                                        }, 0);
+                                    } else {
+                                        log(LOG_LEVELS.DEBUG, `Re-registering observers for widget ${message.widget_id}`);
+                                        observerRegistrations.get(message.widget_id)();
+                                    }
+                                }
+                            } finally {
+                                // Always remove the flag
+                                model._suppressSync = false;
+                            }
+                        } else {
+                            log(LOG_LEVELS.WARN, `[WebSocketManager ${this.clientId}] Received update for unknown widget: ${message.widget_id}`);
+                            // Dump the current widget models for debugging
+                            log(LOG_LEVELS.DEBUG, "Current widget models:", 
+                                Array.from(this.widgetModels.keys()));
+                        }
+                        break;
+
+                    case MessageType.WIDGET_BATCH_UPDATE:
+                        // Handle batch update responses
+                        const batchModel = this.widgetModels.get(message.widget_id);
+                        if (batchModel) {
+                            log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Received batch update confirmation for ${message.widget_id}`);
+                            
+                            // Confirm all properties in the batch
+                            if (message.request_id && message.properties) {
+                                batchModel.confirmBatchUpdate(message.properties, message.request_id);
+                            }
+                        }
+                        break;
+
+                    case 'init-config':
+                        log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Received init config`);
+                        // When we get a full config, we may need to re-register observers for all widgets
+                        for (const widgetId of observerRegistrations.keys()) {
+                            const registerFn = observerRegistrations.get(widgetId);
+                            if (registerFn) {
+                                log(LOG_LEVELS.DEBUG, `Re-registering observers for widget ${widgetId} after init-config`);
+                                registerFn();
+                            }
                         }
                         break;
 
@@ -407,7 +672,7 @@ class WebSocketManager {
                         log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Unhandled message type: ${message.type}`);
                 }
             } catch (error) {
-                log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error processing message:`, error);
+                log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error processing message:`, error, "Raw data:", event.data);
             }
         };
 
@@ -466,12 +731,13 @@ class WebSocketManager {
         }
     }
 
-    sendUpdate(widgetId, property, value) {
+    sendUpdate(widgetId, property, value, requestId) {
         const message = {
             type: "widget-update",
             widget_id: widgetId,
             property: property,
-            value: value
+            value: value,
+            request_id: requestId
         };
         
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -479,6 +745,33 @@ class WebSocketManager {
             this.ws.send(JSON.stringify(message));
         } else {
             log(LOG_LEVELS.DEBUG, `[WebSocketManager] Queuing update message for later:`, message);
+            this.messageQueue.push(message);
+        }
+    }
+
+    // Add batch update method for more efficient updates
+    batchUpdate(widgetId, properties, requestId) {
+        // If no properties to update, skip
+        if (!properties || Object.keys(properties).length === 0) {
+            log(LOG_LEVELS.DEBUG, `[WebSocketManager] No properties to batch update for ${widgetId}`);
+            return;
+        }
+        
+        log(LOG_LEVELS.INFO, `[WebSocketManager] Batch updating ${Object.keys(properties).length} properties for widget ${widgetId}`);
+        
+        // Create a batch update message
+        const message = {
+            type: "widget-batch-update",
+            widget_id: widgetId,
+            properties: properties,
+            request_id: requestId
+        };
+        
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            log(LOG_LEVELS.DEBUG, `[WebSocketManager] Sending batch update:`, message);
+            this.ws.send(JSON.stringify(message));
+        } else {
+            log(LOG_LEVELS.DEBUG, `[WebSocketManager] Queuing batch update message for later:`, message);
             this.messageQueue.push(message);
         }
     }
@@ -505,6 +798,42 @@ class WebSocketManager {
                 messageElement.textContent = message;
             }
         }
+    }
+
+    // Add to WebSocketManager class
+    sendMessage(message) {
+        message.client_id = this.clientId;
+        
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            log(LOG_LEVELS.DEBUG, `[WebSocketManager] Sending message:`, message);
+            this.ws.send(JSON.stringify(message));
+        } else {
+            log(LOG_LEVELS.DEBUG, `[WebSocketManager] Queuing message for later:`, message);
+            this.messageQueue.push(message);
+        }
+    }
+}
+
+// Add this function to refresh widget state from the server
+async function refreshWidgetState(widgetId) {
+    if (!wsManager || !wsManager.sessionId) {
+        log(LOG_LEVELS.ERROR, "Cannot refresh widget state: no active session");
+        return;
+    }
+    
+    log(LOG_LEVELS.INFO, `Requesting refresh for widget ${widgetId}`);
+    
+    // If widgetId is provided, refresh just that widget
+    if (widgetId) {
+        wsManager.sendMessage({
+            type: "get-widget-state",
+            widget_id: widgetId
+        });
+    } else {
+        // Otherwise, refresh all widgets
+        wsManager.sendMessage({
+            type: "get-widget-states"
+        });
     }
 }
 
