@@ -2,6 +2,20 @@
 
 
 
+## v0.2.2 (2025-03-11)
+
+### Fix
+
+* fix(websocket): Implement advanced message handling and batch updates
+
+Enhance WebSocket communication with:
+- Comprehensive message type handling
+- Batch update support for multiple widget properties
+- Improved request tracking with unique request IDs
+- More robust logging and error handling
+- Added client-side observer re-registration mechanism ([`dfca464`](https://github.com/numerous-com/numerous-apps/commit/dfca464048240bd98ae0f45c6a600afd48dc2a99))
+
+
 ## v0.2.1 (2025-03-11)
 
 ### Fix
