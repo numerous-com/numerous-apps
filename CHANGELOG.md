@@ -2,6 +2,15 @@
 
 
 
+## v0.2.3 (2025-03-11)
+
+### Fix
+
+* fix(logging): Reduce verbosity by changing log levels from info to debug
+
+Modify logging statements in app_server.py to use debug level instead of info, reducing unnecessary log output while maintaining detailed tracing for troubleshooting ([`9ba92fc`](https://github.com/numerous-com/numerous-apps/commit/9ba92fce1e3b24388b1403c21083ad91ab356139))
+
+
 ## v0.2.2 (2025-03-11)
 
 ### Fix
