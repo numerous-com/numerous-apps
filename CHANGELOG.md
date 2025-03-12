@@ -2,6 +2,19 @@
 
 
 
+## v0.2.4 (2025-03-12)
+
+### Fix
+
+* fix(app_server): Enhance app initialization with improved logging and error handling
+
+- Add detailed debug logging in app initialization process
+- Increase retry attempts and timeout for app definition retrieval
+- Implement comprehensive error message handling
+- Improve error tracking and logging in backend process
+- Add more robust error reporting with full traceback ([`29727f0`](https://github.com/numerous-com/numerous-apps/commit/29727f0220ed20590b03d159f9539ba933c75949))
+
+
 ## v0.2.3 (2025-03-11)
 
 ### Fix
