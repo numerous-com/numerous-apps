@@ -131,16 +131,20 @@ def _app_process(
 
         # Add cwd to a path so that imports from BASE_DIR work
         sys.path.append(cwd)
+        logger.debug(f"[Backend] Added {cwd} to sys.path")
 
         # Check if module is a file
         _check_module_file_exists(module_string)
+        logger.debug("[Backend] Module file exists")
 
         # Load module from file path
+        logger.debug("[Backend] Loading module from file path")
         spec = importlib.util.spec_from_file_location("app_module", module_string)  # type: ignore [attr-defined]
         _check_module_spec(spec, module_string)
         module = importlib.util.module_from_spec(spec)  # type: ignore [attr-defined]
         module.__process__ = True
         spec.loader.exec_module(module)
+        logger.debug("[Backend] Module loaded successfully")
 
         _app_widgets = {}
         # Iterate over all attributes of the module
@@ -150,7 +154,11 @@ def _app_process(
                 break
 
         _check_app_widgets(_app_widgets)
+        logger.debug(f"[Backend] Found {len(_app_widgets)} widgets")
+
+        logger.debug("[Backend] Starting widget execution")
         _execute(communication_manager, _app_widgets, template)
+        logger.debug("[Backend] Widget execution completed")
 
     except (KeyboardInterrupt, SystemExit):
         logger.info(f"Shutting down process for session {session_id}")
@@ -158,23 +166,25 @@ def _app_process(
     except Exception as e:
         logger.exception(
             f"Error in process for session {session_id},\
-                traceback: {str(traceback.format_exc())[:100]}"
+                traceback: {traceback.format_exc()!s}"
         )
         communication_manager.from_app_instance.send(
             ErrorMessage(
                 type="error",
                 error_type=type(e).__name__,
                 message=str(e),
-                traceback=str(traceback.format_exc())[:100],
+                traceback=str(traceback.format_exc()),
             ).model_dump()
         )
     finally:
         # Clean up queues
+        logger.debug("[Backend] Cleaning up queues")
         while not communication_manager.to_app_instance.empty():
             communication_manager.to_app_instance.receive_nowait()
 
         while not communication_manager.from_app_instance.empty():
             communication_manager.from_app_instance.receive_nowait()
+        logger.debug("[Backend] Queue cleanup completed")
 
 
 def _load_main_js() -> str:

@@ -248,10 +248,13 @@ def _execute(
     template: str,
 ) -> None:
     """Handle widget logic in the separate process."""
+    logger.debug("Starting widget transformation")
     transformed_widgets = _transform_widgets(widgets)
+    logger.debug(f"Transformed {len(widgets)} widgets")
 
     # Set up observers for all widgets
     for widget_id, widget in widgets.items():
+        logger.debug(f"Setting up observers for widget {widget_id}")
         for trait in transformed_widgets[widget_id]["keys"]:
             trait_name = trait
             widget.observe(
@@ -260,16 +263,18 @@ def _execute(
             )
 
     # Send initial app configuration
-    communication_manager.from_app_instance.send(
-        InitConfigMessage(
-            type="init-config",
-            widgets=list(transformed_widgets.keys()),
-            widget_configs=transformed_widgets,
-            template=template,
-        ).model_dump()
+    logger.debug("Sending initial app configuration")
+    init_config = InitConfigMessage(
+        type="init-config",
+        widgets=list(transformed_widgets.keys()),
+        widget_configs=transformed_widgets,
+        template=template,
     )
+    communication_manager.from_app_instance.send(init_config.model_dump())
+    logger.debug("Initial config sent successfully")
 
     message_handler = MessageHandler(widgets, template, transformed_widgets)
+    logger.debug("Message handler initialized, starting message loop")
 
     # Listen for messages from the main process
     while not communication_manager.stop_event.is_set():

@@ -252,10 +252,10 @@ async def _fetch_app_definition_with_retry(
         Exception: For other errors during fetching
 
     """
-    # Try up to 2 times with increasing timeout
+    # Try up to 3 times with increasing timeout
     app_definition = None
-    max_attempts = 2
-    base_timeout = 10
+    max_attempts = 3
+    base_timeout = 15  # Increased from 10 to 15 seconds
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -270,10 +270,20 @@ async def _fetch_app_definition_with_retry(
                 GetStateMessage(type=MessageType.GET_STATE).model_dump(),
                 wait_for_response=True,
                 timeout_seconds=current_timeout,
-                message_types=[MessageType.INIT_CONFIG],
+                message_types=[
+                    MessageType.INIT_CONFIG,
+                    MessageType.ERROR,
+                ],  # Also listen for error messages
             )
 
             if app_definition is not None:
+                if app_definition.get("type") == "error":
+                    # If we received an error message, raise it
+                    raise RuntimeError(  # noqa: TRY301
+                        f"Error in app process: \
+                            {app_definition.get('message', 'Unknown error')}\n"
+                        f"Traceback: {app_definition.get('traceback', 'No traceback')}"
+                    )
                 return app_definition
 
         except TimeoutError:
@@ -283,14 +293,14 @@ async def _fetch_app_definition_with_retry(
             if attempt == max_attempts:
                 raise
             # Brief pause before retry
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1.0)  # Increased from 0.5 to 1.0
         except Exception:
             logger.exception(
                 f"Error on attempt {attempt}/{max_attempts} for app definition"
             )
             if attempt == max_attempts:
                 raise
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1.0)  # Increased from 0.5 to 1.0
 
     # If we got here, we didn't get a valid app definition
     raise HTTPException(
