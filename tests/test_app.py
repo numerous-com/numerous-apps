@@ -6,6 +6,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 from traitlets import Unicode
+from unittest.mock import patch
 
 from numerous.apps.app_server import AnyWidget, create_app
 from numerous.apps.communication import MultiProcessExecutionManager
@@ -15,7 +16,7 @@ from numerous.apps.models import (
     ActionRequestMessage,
     ActionResponseMessage
 )
-from numerous.apps.session_management import GlobalSessionManager, SessionId
+from numerous.apps.session_management import GlobalSessionManager, SessionId, SessionManager
 
 
 @pytest.fixture(scope="session")
@@ -137,6 +138,8 @@ def app_generator():
 @pytest.fixture
 def app(test_dirs):
     from numerous.apps.app_server import templates  # Import templates object
+    import numerous.apps.server
+    import numerous.apps.app_server
 
     # Add the test templates directory to Jinja2's search path
     templates.env.loader.searchpath.append(str(test_dirs / "templates"))
@@ -147,6 +150,7 @@ def app(test_dirs):
         app_generator=app_generator,
         allow_threaded=True,
     )
+    
     return app
 
 

@@ -1,4 +1,4 @@
-const USE_SHADOW_DOM = false;  // Set to true to enable Shadow DOM
+const USE_SHADOW_DOM = false;  // Set to false to avoid issues with Marked.js and other libraries
 const LOG_LEVELS = {
     DEBUG: 0,
     INFO: 1,

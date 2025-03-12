@@ -191,6 +191,71 @@ When you have exported your widgets from you app.py file, you can include them i
 
 You can include CSS, JS and image files in the static folder, and reference them in the html template like this: `<link href="static/css/styles.css" rel="stylesheet">`
 
+## Testing
+
+### Python Tests
+
+The framework includes a comprehensive test suite for Python code using pytest. To run the tests:
+
+```bash
+pytest
+```
+
+For coverage information:
+
+```bash
+pytest --cov=numerous.apps
+```
+
+### JavaScript Tests
+
+The client-side JavaScript (`numerous.js`) can be tested using Jest. The test suite is located in the `tests/js` directory.
+
+To run the JavaScript tests:
+
+1. Make sure you have Node.js installed
+2. Install the required npm dependencies:
+   ```bash
+   npm install
+   ```
+3. Run the tests:
+   ```bash
+   npm test
+   ```
+
+For JavaScript test coverage:
+
+```bash
+npm run test:coverage
+```
+
+The JavaScript tests cover key functionality:
+- The `WidgetModel` class for state management
+- The `WebSocketManager` for client-server communication
+- Utility functions for logging and debugging
+
+To add new JavaScript tests, follow the examples in the `tests/js` directory.
+
+JavaScript tests are automatically run:
+- As part of the pre-commit hooks when pushing code
+- In the GitHub CI/CD pipeline for every push to the repository
+- Coverage reports are generated and archived as artifacts in GitHub Actions
+
+### Pre-commit Hooks
+
+The project uses pre-commit hooks to ensure code quality and prevent issues before they're committed. Both Python and JavaScript tests are included in the pre-commit workflow:
+
+- Python tests run automatically before pushing code
+- JavaScript tests run automatically before pushing code
+
+To install the pre-commit hooks:
+
+```bash
+pre-commit install --hook-type pre-commit --hook-type pre-push
+```
+
+This ensures that all tests pass before code is pushed to the repository.
+
 ## How It Works
 
 The **Numerous Apps** framework is built on FastAPI and uses uvicorn to serve the app.

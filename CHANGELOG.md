@@ -1,6 +1,18 @@
 # CHANGELOG
 
+## Unreleased
 
+### Feature
+
+* feat(testing): Add JavaScript testing framework for client-side code
+
+- Implemented Jest testing framework for the client-side JavaScript code
+- Created comprehensive tests for the WidgetModel class, WebSocketManager, and utility functions
+- Added test configuration files including jest.config.js and .babelrc
+- Updated documentation with instructions for running JavaScript tests
+- Improved code quality and reliability through test-driven development
+- Integrated JavaScript tests into pre-commit hooks to ensure tests pass before code is pushed
+- Added JavaScript tests to GitHub CI/CD pipeline for automated testing on each push
 
 ## v0.2.4 (2025-03-12)
 

@@ -56,6 +56,16 @@ class ExecutionManager(ABC):
         ):
             self.communication_manager.stop_event.set()
 
+    @abstractmethod
+    def is_connected(self) -> bool:
+        """
+        Check if the execution manager is still connected and operational.
+
+        Returns:
+            bool: True if connected and operational, False otherwise.
+
+        """
+
 
 class QueueCommunicationChannel(CommunicationChannel):
     def __init__(self, queue: Queue) -> None:  # type: ignore [type-arg]
@@ -114,6 +124,16 @@ class MultiProcessExecutionManager(ExecutionManager):
         self.target = target
         super().__init__()
 
+    def is_connected(self) -> bool:
+        """
+        Check if the process is still running and connected.
+
+        Returns:
+            bool: True if the process exists and is alive, False otherwise.
+
+        """
+        return hasattr(self, "process") and self.process.is_alive()
+
     def start(
         self,
         base_dir: str,
@@ -166,6 +186,16 @@ class ThreadedExecutionManager(ExecutionManager):
         )
         self.session_id = session_id
         self.target = target
+
+    def is_connected(self) -> bool:
+        """
+        Check if the thread is still running and connected.
+
+        Returns:
+            bool: True if the thread exists and is alive, False otherwise.
+
+        """
+        return hasattr(self, "thread") and self.thread.is_alive()
 
     def start(
         self,

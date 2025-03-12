@@ -1,0 +1,15 @@
+{
+  "name": "numerous-apps-js-tests",
+  "version": "1.0.0",
+  "description": "JavaScript tests for Numerous Apps",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "@babel/preset-env": "^7.23.9"
+  }
+} 

@@ -89,6 +89,32 @@ class SessionManager:
         """Update the last activity timestamp."""
         self._last_activity = time.time()
 
+    @property
+    def last_activity_time(self) -> float:
+        """Return the timestamp of the last activity."""
+        return self._last_activity
+
+    def is_active(self) -> bool:
+        """
+        Check if the session is active and can process messages.
+
+        Returns:
+            bool: True if session is running and processing task is active,
+                  False otherwise.
+
+        """
+        # Check if running flag is set
+        if not self._running:
+            return False
+
+        # Check if processing task exists and is not done
+        if self._processing_task is None or self._processing_task.done():
+            return False
+
+        # At this point, the session is running and the processing task is active,
+        # so we can return the result of the execution manager connection check
+        return self._execution_manager.is_connected()
+
     async def start(self) -> None:
         """Start processing messages."""
         if not self._running:

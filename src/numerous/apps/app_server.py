@@ -59,6 +59,7 @@ DEFAULT_SESSION_TIMEOUT = 24 * 60 * 60  # 24 hours in seconds
 OVERFLOW_SESSION_TIMEOUT = 60 * 60  # 1 hour in seconds
 CLEANUP_INTERVAL = 5 * 60  # Check for expired sessions every 5 minutes
 NORMAL_CLOSE_CODE = 1000  # WebSocket normal closure code
+STALE_SESSION_THRESHOLD = 120  # Consider session stale after 2 minutes of inactivity
 
 
 class AppProcessError(Exception):
@@ -239,32 +240,67 @@ async def _fetch_app_definition_with_retry(
     session: SessionManager,
 ) -> dict[str, Any]:
     """
-    Fetch app definition from the session with retry logic.
+    Fetch app definition with retry logic.
 
     Args:
-        session: The session manager instance
+        session: Session manager
 
     Returns:
-        The app definition dictionary
+        App definition dictionary
 
     Raises:
-        TimeoutError: If all attempts timeout
-        Exception: For other errors during fetching
+        ValueError: If the session is not active
+        TimeoutError: If maximum retries are exhausted
+        RuntimeError: If an error occurs in the app process
 
     """
-    # Try up to 3 times with increasing timeout
-    app_definition = None
-    max_attempts = 3
-    base_timeout = 15  # Increased from 10 to 15 seconds
+    # Check session age first
+    session_age = time.time() - session.last_activity_time
+
+    # Skip activity check for brand new sessions
+    if session_age > 1.0 and not session.is_active():
+        raise ValueError(f"Session {session.session_id} is no longer active")
+
+    # Delegate to the retry function
+    return await _retry_fetch_app_definition(session)
+
+
+async def _process_app_definition(
+    app_definition: dict[str, Any],
+) -> dict[str, Any]:
+    """Process the app definition, handling error responses."""
+    if app_definition.get("type") == "error":
+        # If we received an error message, raise it
+        error_msg = app_definition.get("message", "Unknown error")
+        error_traceback = app_definition.get("traceback", "No traceback")
+        raise RuntimeError(
+            f"Error in app process: {error_msg}\n" f"Traceback: {error_traceback}"
+        )
+    return app_definition
+
+
+async def _retry_fetch_app_definition(
+    session: SessionManager,
+) -> dict[str, Any]:
+    """Retry fetching app definition with exponential backoff."""
+    base_timeout = 8.0  # Initial timeout in seconds
+    max_attempts = 3  # Maximum number of attempts
+
+    def _raise_session_inactive() -> None:
+        """Raise a ValueError when session becomes inactive during retry."""
+        raise ValueError(f"Session {session.session_id} became inactive during retry")
 
     for attempt in range(1, max_attempts + 1):
         try:
-            # Increase timeout with each attempt
             current_timeout = base_timeout * attempt
             logger.debug(
                 f"Attempt {attempt}/{max_attempts} for app definition "
                 f"(timeout: {current_timeout}s)"
             )
+
+            # Check session activity for sessions that aren't brand new
+            if attempt > 1 and not session.is_active():
+                _raise_session_inactive()
 
             app_definition = await session.send(
                 GetStateMessage(type=MessageType.GET_STATE).model_dump(),
@@ -277,14 +313,7 @@ async def _fetch_app_definition_with_retry(
             )
 
             if app_definition is not None:
-                if app_definition.get("type") == "error":
-                    # If we received an error message, raise it
-                    raise RuntimeError(  # noqa: TRY301
-                        f"Error in app process: \
-                            {app_definition.get('message', 'Unknown error')}\n"
-                        f"Traceback: {app_definition.get('traceback', 'No traceback')}"
-                    )
-                return app_definition
+                return await _process_app_definition(app_definition)
 
         except TimeoutError:
             logger.warning(
@@ -294,6 +323,10 @@ async def _fetch_app_definition_with_retry(
                 raise
             # Brief pause before retry
             await asyncio.sleep(1.0)  # Increased from 0.5 to 1.0
+        except ValueError:
+            # Session-related errors should be propagated immediately
+            logger.exception("Session error")
+            raise
         except Exception:
             logger.exception(
                 f"Error on attempt {attempt}/{max_attempts} for app definition"
@@ -302,11 +335,8 @@ async def _fetch_app_definition_with_retry(
                 raise
             await asyncio.sleep(1.0)  # Increased from 0.5 to 1.0
 
-    # If we got here, we didn't get a valid app definition
-    raise HTTPException(
-        status_code=500,
-        detail="Failed to get app definition after multiple attempts.",
-    )
+    # We should never reach here due to the raises above, but just in case
+    raise TimeoutError(f"Maximum attempts ({max_attempts}) exceeded for app definition")
 
 
 def _raise_websocket_disconnect(code: int) -> None:
@@ -318,50 +348,59 @@ def _raise_websocket_disconnect(code: int) -> None:
 async def websocket_endpoint(
     websocket: WebSocket, client_id: str, session_id: str
 ) -> None:
-    """Handle WebSocket connections for real-time communication with clients."""
-    await websocket.accept()
-    logger.debug(f"New WebSocket connection from client {client_id}")
-
-    # Get session or send error if not found
-    session_data = await _get_session_or_error(websocket, session_id)
-    if session_data is None:
-        return
-
-    # Initialize session info and track connection
-    _register_connection(session_id, client_id, websocket, session_data)
-
+    """WebSocket endpoint for client-server communication."""
     try:
-        # Start the message handling tasks
+        await websocket.accept()
+        logger.debug(f"WebSocket connection accepted: {client_id} -> {session_id}")
+
+        session_data = await _get_session_or_error(websocket, session_id)
+        if session_data is None:
+            return
+
+        # Check if session is stale
+        # (e.g., from a previous page load that didn't properly close)
+        # Get timestamp of last activity
+        if session_id in _app.state.config.sessions:
+            session_info = _app.state.config.sessions[session_id]
+            current_time = time.time()
+            inactive_time = current_time - session_info.last_active
+
+            # If session is older than threshold and not active, consider it stale
+            if inactive_time > STALE_SESSION_THRESHOLD and not session_data.is_active():
+                logger.warning(
+                    f"Detected stale session {session_id} "
+                    f"(inactive for {inactive_time:.1f}s). "
+                    "Cleaning up before reconnection."
+                )
+                # Clean up the old session
+                await cleanup_session(session_id)
+
+                # Create a new session
+                session_data = await _get_session(
+                    _app.state.config.base_dir,
+                    _app.state.config.module_path,
+                    _app.state.config.template,
+                    session_id,
+                    _app.state.config.allow_threaded,
+                )
+
+        _register_connection(session_id, client_id, websocket, session_data)
+        update_session_activity(session_id)
+
+        # Handle messages concurrently
         await asyncio.gather(
             _handle_client_messages(websocket, client_id, session_id, session_data),
             _handle_server_messages(websocket, client_id, session_data),
         )
-    except WebSocketDisconnect as e:
-        logger.debug(
-            f"WebSocket disconnected for client {client_id} with code {e.code}"
-        )
+    except WebSocketDisconnect:
+        logger.debug(f"WebSocket disconnected: {client_id} -> {session_id}")
         _cleanup_connection(session_id, client_id)
-
-        # Handle graceful closure
-        if (
-            session_id in _app.state.config.sessions
-            and not _app.state.config.sessions[session_id].connections
-            and e.code == NORMAL_CLOSE_CODE
-        ):
-            logger.debug(
-                f"Last client disconnected gracefully, cleaning up session {session_id}"
-            )
-            await cleanup_session(session_id)
-    except asyncio.CancelledError:
-        logger.debug(f"WebSocket tasks cancelled for client {client_id}")
+    except Exception:
+        logger.exception(f"WebSocket error: {client_id} -> {session_id}")
         _cleanup_connection(session_id, client_id)
-
-        # Log no-connection state for timeout cleanup
-        if (
-            session_id in _app.state.config.sessions
-            and not _app.state.config.sessions[session_id].connections
-        ):
-            logger.debug(f"No more connections for session {session_id}")
+        # Attempt to close connection cleanly
+        with suppress(Exception):
+            await websocket.close()
 
 
 async def _get_session_or_error(
@@ -803,21 +842,27 @@ async def cleanup_session(session_id: str) -> None:
         session_info = _app.state.config.sessions[session_id]
 
         # Close all websocket connections
-        for websocket in session_info.connections.values():
+        for client_id, websocket in list(session_info.connections.items()):
             try:
+                logger.debug(
+                    f"Closing websocket for client {client_id} in session {session_id}"
+                )
                 await websocket.close()
             except (RuntimeError, ConnectionError) as e:
                 logger.debug(f"Error closing websocket: {e}")
+            # Remove from connections dict
+            session_info.connections.pop(client_id, None)
 
         # Cleanup session data
         try:
+            logger.debug(f"Stopping session processes for {session_id}")
             await session_info.data.stop()
         except (RuntimeError, asyncio.CancelledError, ConnectionError):
             logger.exception("Error cleaning up session data")
 
         # Remove session from state
         del _app.state.config.sessions[session_id]
-        logger.debug(f"Cleaned up session {session_id}")
+        logger.debug(f"Removed session {session_id} from sessions registry")
 
 
 def update_session_activity(session_id: str) -> None:

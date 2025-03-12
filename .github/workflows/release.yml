@@ -45,6 +45,29 @@ jobs:
       - run: coverage run -m pytest -vv tests/
       - run: coverage report | grep 'TOTAL' | awk '{print "COVERAGE_PCT=" $4}' >> $GITHUB_ENV
       # TODO: publish coverage report
+  js_test:
+    name: JavaScript tests
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm install --no-package-lock
+      - name: Run JavaScript tests
+        run: npm test
+      - name: Generate JavaScript coverage report
+        run: npm test -- --coverage
+      - name: Archive JavaScript coverage results
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-coverage-report
+          path: js-coverage/
+          retention-days: 5
   end_to_end_test:
     name: End-to-end test
     timeout-minutes: 5
@@ -59,7 +82,7 @@ jobs:
       - run: pip install -e .[dev]
       - run: python e-e-test/e-e-test-script.py
   build:
-    needs: [test, end_to_end_test]
+    needs: [test, js_test, end_to_end_test]
     timeout-minutes: 15
     runs-on: ubuntu-latest
     name: Build package
@@ -90,6 +113,7 @@ jobs:
     needs: 
       #- lint
       - test
+      - js_test
       - build
     steps:
       - uses: actions/checkout@v4
