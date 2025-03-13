@@ -560,116 +560,130 @@ class WebSocketManager {
 
     connect() {
         log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Connecting to WebSocket...`);
-        const isSecure = window.location.protocol === 'https:';
-        const wsProtocol = isSecure ? 'wss:' : 'ws:';
-        this.ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${this.clientId}/${this.sessionId}`);
+        
+        // Create new connection promise for this connection attempt
+        this.connectionPromise = new Promise((resolve) => {
+            this.resolveConnection = resolve;
+        });
+        
+        // Update connection status
+        this.updateConnectionStatus('Connecting to server...');
+        
+        // Determine protocol (ws or wss)
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const url = `${protocol}//${window.location.host}/ws/${this.clientId}/${this.sessionId}`;
+        
+        // Create WebSocket
+        this.ws = new WebSocket(url);
         
         this.ws.onmessage = (event) => {
             try {
                 const message = JSON.parse(event.data);
                 log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Received message:`, message);
                 
-                // Handle all message types
-                switch (message.type) {
-                    case MessageType.SESSION_ERROR:
-                        log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Session error received`);
-                        this.showSessionLostBanner();
-                        
-                        // Don't attempt to reconnect on session errors
-                        this.reconnectAttempts = this.maxReconnectAttempts;
-                        
-                        // Hide the connection status overlay since this is a session error
-                        const connectionStatus = document.getElementById('connection-status');
-                        if (connectionStatus) {
-                            connectionStatus.classList.add('hidden');
-                        }
-                        break;
-
-                    case 'widget-update':
-                        // Handle widget updates from both actions and direct changes
-                        const model = this.widgetModels.get(message.widget_id);
-                        if (model) {
-                            log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Updating widget ${message.widget_id}: ${message.property} = ${message.value}`);
+                // Process message based on type
+                if (message && message.type) {
+                    switch (message.type) {
+                        case MessageType.SESSION_ERROR:
+                            log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Session error received`);
+                            this.showSessionLostBanner();
                             
-                            // Set a flag to prevent recursive updates
-                            model._suppressSync = true;
-                            try {
-                                // Update the model without triggering a send back to server
-                                model.set(message.property, message.value, true);
+                            // Don't attempt to reconnect on session errors
+                            this.reconnectAttempts = this.maxReconnectAttempts;
+                            
+                            // Hide the connection status overlay since this is a session error
+                            const connectionStatus = document.getElementById('connection-status');
+                            if (connectionStatus) {
+                                connectionStatus.classList.add('hidden');
+                            }
+                            break;
+
+                        case 'widget-update':
+                            // Handle widget updates from both actions and direct changes
+                            const model = this.widgetModels.get(message.widget_id);
+                            if (model) {
+                                log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Updating widget ${message.widget_id}: ${message.property} = ${message.value}`);
                                 
-                                // Confirm the update if this is a response to our request
-                                if (message.request_id) {
-                                    model.confirmUpdate(message.property, message.value, message.request_id);
-                                }
-                                
-                                // Also trigger a general update event that widgets can listen to
-                                model.trigger('update', {
-                                    property: message.property,
-                                    value: message.value,
-                                    request_id: message.request_id
-                                });
-                                
-                                // Special handling for checkbox and form elements which often lose observers
-                                // This improves reliability of checkboxes like GDPR consent buttons
-                                const isFormElement = ['val', 'checked', 'value', 'selected'].includes(message.property);
-                                
-                                // Call any registered observer setup functions for this widget
-                                if (observerRegistrations.has(message.widget_id)) {
-                                    if (isFormElement) {
-                                        log(LOG_LEVELS.DEBUG, `Re-registering observers for form element ${message.widget_id}.${message.property}`);
-                                        // Use setTimeout to ensure the DOM is updated before re-registering
-                                        setTimeout(() => {
-                                            observerRegistrations.get(message.widget_id)();
-                                        }, 0);
-                                    } else {
-                                        log(LOG_LEVELS.DEBUG, `Re-registering observers for widget ${message.widget_id}`);
-                                        observerRegistrations.get(message.widget_id)();
+                                // Set a flag to prevent recursive updates
+                                model._suppressSync = true;
+                                try {
+                                    // Update the model without triggering a send back to server
+                                    model.set(message.property, message.value, true);
+                                    
+                                    // Confirm the update if this is a response to our request
+                                    if (message.request_id) {
+                                        model.confirmUpdate(message.property, message.value, message.request_id);
                                     }
+                                    
+                                    // Also trigger a general update event that widgets can listen to
+                                    model.trigger('update', {
+                                        property: message.property,
+                                        value: message.value,
+                                        request_id: message.request_id
+                                    });
+                                    
+                                    // Special handling for checkbox and form elements which often lose observers
+                                    // This improves reliability of checkboxes like GDPR consent buttons
+                                    const isFormElement = ['val', 'checked', 'value', 'selected'].includes(message.property);
+                                    
+                                    // Call any registered observer setup functions for this widget
+                                    if (observerRegistrations.has(message.widget_id)) {
+                                        if (isFormElement) {
+                                            log(LOG_LEVELS.DEBUG, `Re-registering observers for form element ${message.widget_id}.${message.property}`);
+                                            // Use setTimeout to ensure the DOM is updated before re-registering
+                                            setTimeout(() => {
+                                                observerRegistrations.get(message.widget_id)();
+                                            }, 0);
+                                        } else {
+                                            log(LOG_LEVELS.DEBUG, `Re-registering observers for widget ${message.widget_id}`);
+                                            observerRegistrations.get(message.widget_id)();
+                                        }
+                                    }
+                                } finally {
+                                    // Always remove the flag
+                                    model._suppressSync = false;
                                 }
-                            } finally {
-                                // Always remove the flag
-                                model._suppressSync = false;
+                            } else {
+                                log(LOG_LEVELS.WARN, `[WebSocketManager ${this.clientId}] Received update for unknown widget: ${message.widget_id}`);
+                                // Dump the current widget models for debugging
+                                log(LOG_LEVELS.DEBUG, "Current widget models:", 
+                                    Array.from(this.widgetModels.keys()));
                             }
-                        } else {
-                            log(LOG_LEVELS.WARN, `[WebSocketManager ${this.clientId}] Received update for unknown widget: ${message.widget_id}`);
-                            // Dump the current widget models for debugging
-                            log(LOG_LEVELS.DEBUG, "Current widget models:", 
-                                Array.from(this.widgetModels.keys()));
-                        }
-                        break;
+                            break;
 
-                    case MessageType.WIDGET_BATCH_UPDATE:
-                        // Handle batch update responses
-                        const batchModel = this.widgetModels.get(message.widget_id);
-                        if (batchModel) {
-                            log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Received batch update confirmation for ${message.widget_id}`);
-                            
-                            // Confirm all properties in the batch
-                            if (message.request_id && message.properties) {
-                                batchModel.confirmBatchUpdate(message.properties, message.request_id);
+                        case MessageType.WIDGET_BATCH_UPDATE:
+                            // Handle batch update responses
+                            const batchModel = this.widgetModels.get(message.widget_id);
+                            if (batchModel) {
+                                log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Received batch update confirmation for ${message.widget_id}`);
+                                
+                                // Confirm all properties in the batch
+                                if (message.request_id && message.properties) {
+                                    batchModel.confirmBatchUpdate(message.properties, message.request_id);
+                                }
                             }
-                        }
-                        break;
+                            break;
 
-                    case 'init-config':
-                        log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Received init config`);
-                        // When we get a full config, we may need to re-register observers for all widgets
-                        for (const widgetId of observerRegistrations.keys()) {
-                            const registerFn = observerRegistrations.get(widgetId);
-                            if (registerFn) {
-                                log(LOG_LEVELS.DEBUG, `Re-registering observers for widget ${widgetId} after init-config`);
-                                registerFn();
+                        case 'init-config':
+                            log(LOG_LEVELS.INFO, `[WebSocketManager ${this.clientId}] Received init config`);
+                            // When we get a full config, we may need to re-register observers for all widgets
+                            for (const widgetId of observerRegistrations.keys()) {
+                                const registerFn = observerRegistrations.get(widgetId);
+                                if (registerFn) {
+                                    log(LOG_LEVELS.DEBUG, `Re-registering observers for widget ${widgetId} after init-config`);
+                                    registerFn();
+                                }
                             }
-                        }
-                        break;
+                            break;
 
-                    case 'error':
-                        log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error from backend:`, message);
-                        this.showErrorModal(message.error || 'Unknown error occurred');
-                        break;
+                        case 'error':
+                            log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error from backend:`, message);
+                            this.showErrorModal(message.error || 'Unknown error occurred');
+                            break;
 
-                    default:
-                        log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Unhandled message type: ${message.type}`);
+                        default:
+                            log(LOG_LEVELS.DEBUG, `[WebSocketManager ${this.clientId}] Unhandled message type: ${message.type}`);
+                    }
                 }
             } catch (error) {
                 log(LOG_LEVELS.ERROR, `[WebSocketManager ${this.clientId}] Error processing message:`, error, "Raw data:", event.data);
@@ -679,18 +693,25 @@ class WebSocketManager {
         this.ws.onopen = () => {
             log(LOG_LEVELS.INFO, `[WebSocketManager] WebSocket connection established`);
             this.hideConnectionStatus();
+            this.reconnectAttempts = 0;
+            this.reconnectDelay = 1000; // Reset delay on successful connection
             
-            // Request all widget states after connection
-            this.ws.send(JSON.stringify({
-                type: 'get-widget-states',
-                client_id: this.clientId
-            }));
-            
-            // Process any queued messages
-            this.flushMessageQueue();
-            
-            // Resolve the connection promise to indicate the connection is ready
-            this.resolveConnection();
+            // Add a small delay before requesting widget states to ensure server is ready
+            setTimeout(() => {
+                // Request all widget states after connection is fully established
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'get-widget-states',
+                        client_id: this.clientId
+                    }));
+                    
+                    // Process any queued messages
+                    this.flushMessageQueue();
+                }
+                
+                // Resolve the connection promise to indicate the connection is ready
+                this.resolveConnection();
+            }, 100); // Short delay to ensure server connection is ready
         };
 
         this.ws.onclose = (event) => {

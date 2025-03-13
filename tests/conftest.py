@@ -34,6 +34,10 @@ def conditional_is_active(self):
     if _BYPASS_SESSION_CHECKS:
         return True
     else:
+        # For tests with real session checks, respect both running and connections
+        # but make sure active_connections is empty unless explicitly set
+        if not hasattr(self, '_active_connections'):
+            self._active_connections = set()
         # Call the original method
         return original_is_active(self)
 

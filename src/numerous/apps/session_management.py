@@ -72,48 +72,39 @@ class SessionManager:
     """Manages communication and state for a single session."""
 
     def __init__(
-        self, session_id: SessionId, execution_manager: ExecutionManager
+        self,
+        session_id: SessionId,
+        execution_manager: ExecutionManager,
     ) -> None:
-        """Initialize session manager."""
+        """Initialize the session manager."""
         self.session_id = session_id
         self._execution_manager = execution_manager
-        self._widget_states: dict[WidgetId, WidgetState] = defaultdict(WidgetState)
         self._callbacks: dict[CallbackHandle, CallbackRegistration] = {}
-        self._processing_task: asyncio.Task[None] | None = None
+        self._widget_states: defaultdict[WidgetId, WidgetState] = defaultdict(
+            lambda: WidgetState(properties={})
+        )
         self._running = False
-        self._last_activity = time.time()
-        self._session_timeout: float = 60.0  # Default timeout in seconds
+        self._processing_task: asyncio.Task[None] | None = None
         self._shutdown_event = asyncio.Event()
+        self.last_activity_time = time.time()
+        self._active_connections: set[str] = set()  # Client IDs with active connections
 
-    def _update_last_activity(self) -> None:
-        """Update the last activity timestamp."""
-        self._last_activity = time.time()
+    def add_active_connection(self, client_id: str) -> None:
+        """Track an active client connection."""
+        self._active_connections.add(client_id)
 
-    @property
-    def last_activity_time(self) -> float:
-        """Return the timestamp of the last activity."""
-        return self._last_activity
+    def remove_active_connection(self, client_id: str) -> None:
+        """Remove a client connection that has disconnected."""
+        self._active_connections.discard(client_id)
+
+    def has_active_connections(self) -> bool:
+        """Check if there are any active client connections."""
+        return len(self._active_connections) > 0
 
     def is_active(self) -> bool:
-        """
-        Check if the session is active and can process messages.
-
-        Returns:
-            bool: True if session is running and processing task is active,
-                  False otherwise.
-
-        """
-        # Check if running flag is set
-        if not self._running:
-            return False
-
-        # Check if processing task exists and is not done
-        if self._processing_task is None or self._processing_task.done():
-            return False
-
-        # At this point, the session is running and the processing task is active,
-        # so we can return the result of the execution manager connection check
-        return self._execution_manager.is_connected()
+        """Check if the session is still active."""
+        # Consider a session active if it has running processes or active connections
+        return self._running or self.has_active_connections()
 
     async def start(self) -> None:
         """Start processing messages."""
@@ -202,7 +193,7 @@ class SessionManager:
                         await asyncio.sleep(0.1)
                         continue
 
-                    self._update_last_activity()
+                    self.last_activity_time = time.time()
 
                     # Handle widget updates
                     msg_type = message.get("type")
@@ -288,7 +279,7 @@ class SessionManager:
             asyncio.TimeoutError: If timeout occurs while waiting for response
 
         """
-        self._update_last_activity()
+        self.last_activity_time = time.time()
         self._execution_manager.communication_manager.to_app_instance.send(message)
 
         if callback is not None:
@@ -371,7 +362,8 @@ class GlobalSessionManager:
             session_id=session_id,
             execution_manager=execution_manager,
         )
-        session._session_timeout = self._session_timeout  # noqa: SLF001
+        # Use the session's last_activity_time directly for timeout checks
+        # instead of setting a non-existent _session_timeout attribute
         self._sessions[session_id] = session
         asyncio.create_task(session.start())  # noqa: RUF006
         return session
@@ -457,7 +449,7 @@ class GlobalSessionManager:
                     to_remove = []
                     async with self._lock:
                         for session_id, session in self._sessions.items():
-                            inactive_time = current_time - session._last_activity  # noqa: SLF001
+                            inactive_time = current_time - session.last_activity_time
                             logger.debug(
                                 f"Session {session_id}: \
                                     inactive for {inactive_time:.1f}s "

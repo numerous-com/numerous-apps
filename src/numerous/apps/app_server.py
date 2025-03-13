@@ -60,6 +60,7 @@ OVERFLOW_SESSION_TIMEOUT = 60 * 60  # 1 hour in seconds
 CLEANUP_INTERVAL = 5 * 60  # Check for expired sessions every 5 minutes
 NORMAL_CLOSE_CODE = 1000  # WebSocket normal closure code
 STALE_SESSION_THRESHOLD = 120  # Consider session stale after 2 minutes of inactivity
+NEW_SESSION_GRACE_PERIOD = 5.0  # Grace period for new sessions in seconds
 
 
 class AppProcessError(Exception):
@@ -357,16 +358,22 @@ async def websocket_endpoint(
         if session_data is None:
             return
 
-        # Check if session is stale
-        # (e.g., from a previous page load that didn't properly close)
-        # Get timestamp of last activity
+        # Check for stale sessions using improved criteria
         if session_id in _app.state.config.sessions:
             session_info = _app.state.config.sessions[session_id]
             current_time = time.time()
             inactive_time = current_time - session_info.last_active
+            session_age = current_time - session_info.created_at
 
-            # If session is older than threshold and not active, consider it stale
-            if inactive_time > STALE_SESSION_THRESHOLD and not session_data.is_active():
+            # Consider a session stale if it meets ALL these criteria:
+            # 1. Been inactive longer than the threshold
+            # 2. No active app process (session is not active)
+            # 3. Session is old enough to not be a fresh reconnection
+            if (
+                inactive_time > STALE_SESSION_THRESHOLD
+                and not session_data.is_active()
+                and session_age > NEW_SESSION_GRACE_PERIOD
+            ):
                 logger.warning(
                     f"Detected stale session {session_id} "
                     f"(inactive for {inactive_time:.1f}s). "
@@ -377,11 +384,11 @@ async def websocket_endpoint(
 
                 # Create a new session
                 session_data = await _get_session(
+                    _app.state.config.allow_threaded,
+                    session_id,
                     _app.state.config.base_dir,
                     _app.state.config.module_path,
                     _app.state.config.template,
-                    session_id,
-                    _app.state.config.allow_threaded,
                 )
 
         _register_connection(session_id, client_id, websocket, session_data)
@@ -438,6 +445,9 @@ def _register_connection(
     session_info.connections[client_id] = websocket
     update_session_activity(session_id)
 
+    # Track active connection in the SessionManager
+    session_data.add_active_connection(client_id)
+
 
 async def _handle_client_messages(
     websocket: WebSocket, client_id: str, session_id: str, session_data: SessionManager
@@ -466,7 +476,9 @@ async def _handle_server_messages(
     try:
         # Register callback for all messages
         handle = session_data.register_callback(
-            callback=lambda msg: handle_websocket_message(websocket, msg)
+            callback=lambda msg: _handle_server_message_safely(
+                websocket, msg, client_id
+            )
         )
         try:
             # Wait indefinitely until cancelled or disconnected
@@ -479,6 +491,23 @@ async def _handle_server_messages(
         raise
 
 
+async def _handle_server_message_safely(
+    websocket: WebSocket, message: dict[str, Any], client_id: str
+) -> None:
+    """Safely handle server message, suppressing errors for disconnected sockets."""
+    try:
+        # Only attempt to process the message if the websocket is still connected
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await handle_websocket_message(websocket, message)
+        # Silently ignore messages for disconnected websockets
+    except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
+        # Log at debug level to avoid filling logs with expected disconnection errors
+        logger.debug(f"Cannot send to client {client_id} - connection issue: {e!s}")
+    except Exception:
+        # Still log other unexpected errors at higher level
+        logger.exception(f"Error sending message to client {client_id}")
+
+
 def _cleanup_connection(session_id: str, client_id: str) -> None:
     """Remove a client connection from a session."""
     if (
@@ -486,7 +515,15 @@ def _cleanup_connection(session_id: str, client_id: str) -> None:
         and client_id in _app.state.config.sessions[session_id].connections
     ):
         logger.debug(f"Client {client_id} disconnected")
+
+        # Remove from connections dict
         del _app.state.config.sessions[session_id].connections[client_id]
+
+        # Update the SessionManager's active connections
+        if session_id in _app.state.config.sessions:
+            session_info = _app.state.config.sessions[session_id]
+            if hasattr(session_info.data, "remove_active_connection"):
+                session_info.data.remove_active_connection(client_id)
 
 
 @_app.get("/numerous.js")  # type: ignore[misc]
@@ -1146,9 +1183,9 @@ async def _send_websocket_message(
             logger.exception("Error sending message")
             raise
     else:
-        logger.warning(
-            f"Cannot send message - websocket in state {websocket.client_state}"
-        )
+        # Log at debug level since this is expected during connection transitions
+        connection_state = websocket.client_state
+        logger.debug(f"Cannot send message - websocket in state {connection_state}")
 
 
 def _raise_type_error(message: str) -> None:
