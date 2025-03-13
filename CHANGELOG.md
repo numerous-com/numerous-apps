@@ -2,6 +2,19 @@
 
 
 
+## v0.4.0 (2025-03-13)
+
+### Feature
+
+* feat(session_management): Enhance session handling and connection tracking
+
+- Introduce a grace period for new sessions to prevent premature stale detection
+- Improve stale session detection criteria by considering session age and active connections
+- Add methods to track active connections in SessionManager
+- Update WebSocket message handling to ensure safe processing of messages for connected clients
+- Refactor tests to validate new session management logic and connection states ([`6d000f6`](https://github.com/numerous-com/numerous-apps/commit/6d000f633fad099b83f5351ef763ce9cee238c1d))
+
+
 ## v0.3.0 (2025-03-12)
 
 ### Feature
