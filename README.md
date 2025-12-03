@@ -1,65 +1,140 @@
-## Testing
+<p align="center">
+  <img src="logo-with-text.svg" alt="Numerous Apps" width="320">
+</p>
 
-### Python Tests
+<p align="center">
+  <strong>Build reactive Python web apps with full creative control</strong>
+</p>
 
-To run the Python tests:
+<p align="center">
+  <a href="https://pypi.org/project/numerous-apps/"><img src="https://img.shields.io/pypi/v/numerous-apps" alt="PyPI version"></a>
+  <a href="https://github.com/numerous-com/numerous-app/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
+</p>
 
-```bash
-pytest
-```
+---
 
-For coverage information:
+**Numerous Apps** is a Python framework for building modern, reactive web applications. Create powerful apps using familiar Python patterns while maintaining complete control over your UI design.
 
-```bash
-pytest --cov=numerous
-```
+## ✨ Features
 
-### JavaScript Tests
+- **🐍 Pure Python** — Write your app logic in Python, no JavaScript required
+- **🎨 Full Creative Control** — No enforced styling; use any CSS framework or custom design
+- **⚡ Reactive** — Real-time updates via WebSocket communication
+- **🧩 Component-Based** — Built on [anywidget](https://anywidget.dev/) for reusable, framework-agnostic components
+- **🚀 Quick Start** — Bootstrap a new app in seconds with the CLI
+- **📦 Lightweight** — Built on FastAPI, Uvicorn, and Jinja2
 
-The client-side JavaScript code (`numerous.js`) can be tested using Jest. To run the JavaScript tests:
+## 🚀 Quick Start
 
-1. Install Node.js if you don't have it already
-2. Install the required npm dependencies:
-
-```bash
-npm install
-```
-
-3. Run the tests:
-
-```bash
-npm test
-```
-
-For coverage information:
+Install the framework and create your first app in seconds:
 
 ```bash
-npm test -- --coverage
+pip install numerous-apps
+numerous-bootstrap my_app
 ```
 
-The JavaScript tests cover the following functionality:
-- `WidgetModel` class for managing widget state
-- `WebSocketManager` for handling WebSocket communication
-- Utility functions for logging and debugging
+This creates a new app in `my_app/`, installs dependencies, and starts the server at http://127.0.0.1:8000.
 
-JavaScript tests are automatically run:
-- As part of the pre-commit hooks when pushing code
-- In the GitHub CI/CD pipeline for every push to the repository
-- Coverage reports are generated and archived as artifacts in GitHub Actions
-
-For more details on the JavaScript testing setup, see [tests/js/README.md](tests/js/README.md).
-
-### Pre-commit Hooks
-
-Both Python and JavaScript tests are included in the pre-commit workflow:
-
-- Python tests run automatically before pushing code
-- JavaScript tests run automatically before pushing code
-
-To install the pre-commit hooks:
+To run your app again:
 
 ```bash
-pre-commit install --hook-type pre-commit --hook-type pre-push
+cd my_app
+python app.py
 ```
 
-This ensures that all tests pass before code is pushed to the repository. 
+## 📖 How It Works
+
+A Numerous App consists of:
+
+| File | Purpose |
+|------|---------|
+| `app.py` | Define widgets, business logic, and reactivity |
+| `index.html.j2` | Jinja2 template for your app layout |
+| `static/` | CSS, JavaScript, and images |
+| `requirements.txt` | App dependencies |
+
+### Example App
+
+**app.py**
+```python
+import numerous.widgets as wi
+from numerous.apps import create_app
+
+def run_app():
+    counter = wi.Number(default=0, label="Counter:")
+    
+    def on_click(event):
+        counter.value += 1
+    
+    button = wi.Button(label="Click me", on_click=on_click)
+    
+    return {"counter": counter, "button": button}
+
+app = create_app(template="index.html.j2", dev=True, app_generator=run_app)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+```
+
+**index.html.j2**
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My App</title>
+</head>
+<body>
+    <h1>Counter App</h1>
+    <div style="display: flex; gap: 10px; align-items: center;">
+        {{ counter }}
+        {{ button }}
+    </div>
+</body>
+</html>
+```
+
+## 🎯 Who Is This For?
+
+Numerous Apps is perfect if you:
+
+- Want to build Python web apps with **full control over styling and layout**
+- Need **tight integration** between a Python backend and reactive UI
+- Prefer using **standard development tools** (no special IDE or notebook required)
+- Want to create **reusable anywidget components** that work across frameworks
+
+## 🧩 Widgets
+
+Use widgets from the companion [numerous-widgets](https://github.com/numerous-com/numerous-widgets) package, or create your own using the [anywidget](https://anywidget.dev/) specification.
+
+```python
+import numerous.widgets as wi
+
+# Available widgets
+counter = wi.Number(default=0, label="Value:")
+button = wi.Button(label="Submit", on_click=handler)
+dropdown = wi.DropDown(["A", "B", "C"], label="Select:")
+tabs = wi.Tabs(["Tab 1", "Tab 2", "Tab 3"])
+# ... and more
+```
+
+## 📚 Documentation
+
+For detailed documentation, visit the [docs](docs/README.md) or check out:
+
+- [Building from Scratch](docs/README.md#building-your-app-from-scratch) — Step-by-step guide
+- [Widget Reference](docs/README.md#widgets) — Available widgets and customization
+- [How It Works](docs/README.md#how-it-works) — Architecture overview
+
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:
+
+- Setting up your development environment
+- Running tests
+- Submitting pull requests
+
+## 📄 License
+
+[MIT License](LICENSE.md) — Numerous ApS
