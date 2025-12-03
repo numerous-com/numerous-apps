@@ -213,11 +213,18 @@ def run_auth_browser_tests(host: str, port: int) -> None:
 
 
 def create_venv(tmp_path: Path) -> Path:
-    """Create a temporary virtual environment."""
+    """Create a temporary virtual environment, or reuse existing one."""
     import venv
 
     logger.info(f"Creating virtual environment in {tmp_path}")
     venv_path = tmp_path / "venv"
+    
+    # Check if venv already exists and has a working Python
+    venv_python = venv_path / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python")
+    if venv_python.exists():
+        logger.info("Virtual environment already exists, reusing it")
+        return venv_path
+    
     venv.create(venv_path, with_pip=True)
     return venv_path
 
@@ -769,9 +776,15 @@ def main():
             test_numerous_bootstrap_integration(tmp_path)
             logger.info("Regular bootstrap tests passed!")
             
+            # Wait for any lingering processes to fully terminate
+            time.sleep(3)
+            
             # Run the auth-enabled bootstrap test
             test_numerous_bootstrap_with_auth(tmp_path)
             logger.info("Auth bootstrap tests passed!")
+            
+            # Wait for any lingering processes to fully terminate
+            time.sleep(3)
             
             # Run the database auth bootstrap test
             test_numerous_bootstrap_with_db_auth(tmp_path)
