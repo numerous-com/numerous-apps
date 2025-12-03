@@ -1,101 +1,18 @@
-<style>
-.loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 80px;
-    background-color: #e3f2fd;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    z-index: 9999;
-    transition: transform 0.3s ease-out;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    padding: 0 12px;
-}
-
-.loading-overlay.hidden {
-    transform: translateY(-100%);
-}
-
-.loading-content {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 14px;
-    color: #1976d2;
-    flex-grow: 1;
-    justify-content: center;
-    padding-right: 24px;
-}
-
-.loading-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid #bbdefb;
-    border-top: 2px solid #1976d2;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-/* Connection status styles */
-.connection-overlay {
-    background-color: #fff3cd;
-    border-bottom: 1px solid #ffeeba;
-}
-
-.connection-content {
-    color: #856404;
-}
-
-.dismiss-button {
-    background: none;
-    border: none;
-    color: #1565c0;
-    cursor: pointer;
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-}
-
-.dismiss-button:hover {
-    background-color: #1565c0;
-    color: white;
-}
-
-.dismiss-button-container {
-    padding: 0 12px;
-    min-width: 24px;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-</style>
-
-<div id="splash-screen" class="loading-overlay">
-    <div class="loading-content">
-        <div class="loading-spinner"></div>
+<div id="splash-screen" class="numerous-loading-overlay">
+    <div class="numerous-loading-content">
+        <div class="numerous-loading-spinner"></div>
         <div>Loading application...</div>
     </div>
-    <div class="dismiss-button-container">
-        <button class="dismiss-button" onclick="dismissLoadingOverlay()">
+    <div style="padding: 0 12px; min-width: 24px;">
+        <button class="numerous-dismiss-btn" onclick="dismissLoadingOverlay()">
             ✕
         </button>
     </div>
 </div>
 
-<div id="connection-status" class="loading-overlay connection-overlay hidden">
-    <div class="loading-content connection-content">
-        <div class="loading-spinner"></div>
+<div id="connection-status" class="numerous-loading-overlay numerous-connection-overlay hidden">
+    <div class="numerous-loading-content numerous-connection-content">
+        <div class="numerous-loading-spinner"></div>
         <div>Connection lost. Attempting to reconnect...</div>
     </div>
-</div> 
+</div>
