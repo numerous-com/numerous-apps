@@ -2,6 +2,13 @@
 
 
 
+## v0.4.2 (2025-12-03)
+
+### Fix
+
+* fix(ci): install Playwright browsers and exit with error on test failure ([`8ce430c`](https://github.com/numerous-com/numerous-apps/commit/8ce430cf9775e3f56384e0a6e424df45ecb8198f))
+
+
 ## v0.4.1 (2025-12-03)
 
 ### Fix
