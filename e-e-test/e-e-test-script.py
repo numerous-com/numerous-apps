@@ -307,6 +307,7 @@ def main():
             logger.info("All tests passed successfully!")
         except Exception as e:
             logger.error(f"Test failed: {e}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
