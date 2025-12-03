@@ -89,19 +89,26 @@ class AppProcessError(Exception):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-_app = NumerousApp()
-
 # Get the base directory
 BASE_DIR = Path.cwd()
 
 # Add package directory setup near the top of the file
 PACKAGE_DIR = Path(__file__).parent
 
-# Configure templates with custom environment
+# Module-level singleton for backwards compatibility (single-app mode)
+# Initialized immediately since routes use decorator-based definitions
+_app = NumerousApp()
+
+# Configure templates with custom environment (for single-app mode)
 templates = Jinja2Templates(
     directory=[str(BASE_DIR / "templates"), str(PACKAGE_DIR / "templates")]
 )
 templates.env.autoescape = False  # Disable autoescaping globally
+
+
+def _get_or_create_singleton_app() -> NumerousApp:
+    """Get the singleton app instance for backwards compatibility."""
+    return _app
 
 
 @dataclass
@@ -126,6 +133,9 @@ class NumerousAppServerState:
     widgets: dict[str, AnyWidget] = field(default_factory=dict)
     allow_threaded: bool = False
     cleanup_task: asyncio.Task[None] | None = None
+    # Multi-app configuration
+    path_prefix: str = ""
+    theme_css: str | None = None
     # Auth configuration
     auth_enabled: bool = False
     login_template: str | None = None
@@ -148,23 +158,25 @@ def _handle_template_error(error_title: str, error_message: str) -> HTMLResponse
 
 @_app.get("/")  # type: ignore[misc]
 async def home(request: Request) -> Response:
-    template = _app.state.config.template
-    template_name = _get_template(template, _app.state.config.internal_templates)
+    app = _app
+    template = app.state.config.template
+    app_templates = app.state.config.internal_templates
+    template_name = _get_template(template, app_templates)
 
     # Create the template context with widget divs
-    template_widgets = {key: wrap_html(key) for key in _app.widgets}
+    template_widgets = {key: wrap_html(key) for key in app.widgets}
 
     try:
         # Get template source and find undefined variables
         template_source = ""
-        if isinstance(templates.env.loader, FileSystemLoader):
-            template_source = templates.env.loader.get_source(
-                templates.env, template_name
+        if isinstance(app_templates.env.loader, FileSystemLoader):
+            template_source = app_templates.env.loader.get_source(
+                app_templates.env, template_name
             )[0]
     except jinja2.exceptions.TemplateNotFound as e:
         return _handle_template_error("Template Error", f"Template not found: {e!s}")
 
-    parsed_content = templates.env.parse(template_source)
+    parsed_content = app_templates.env.parse(template_source)
     undefined_vars = meta.find_undeclared_variables(parsed_content)
 
     # Remove request and title from undefined vars as they are always provided
@@ -180,14 +192,14 @@ async def home(request: Request) -> Response:
         return _handle_template_error("Template Error", error_message)
 
     # Rest of the existing code...
-    template_content = templates.get_template(template_name).render(
+    template_content = app_templates.get_template(template_name).render(
         {"request": request, "title": "Home Page", **template_widgets}
     )
 
     # Check for missing widgets
     missing_widgets = [
         widget_id
-        for widget_id in _app.widgets
+        for widget_id in app.widgets
         if f'id="{widget_id}"' not in template_content
     ]
 
@@ -199,15 +211,28 @@ async def home(request: Request) -> Response:
         )
 
     # Load the error modal, splash screen, and session lost banner templates
-    error_modal = templates.get_template("error_modal.html.j2").render()
-    splash_screen = templates.get_template("splash_screen.html.j2").render()
-    session_lost_banner = templates.get_template("session_lost_banner.html.j2").render()
+    error_modal = app_templates.get_template("error_modal.html.j2").render()
+    splash_screen = app_templates.get_template("splash_screen.html.j2").render()
+    session_lost_banner = app_templates.get_template(
+        "session_lost_banner.html.j2"
+    ).render()
+
+    # Inject base path for JavaScript and base CSS
+    path_prefix = getattr(app.state.config, "path_prefix", "")
+    base_path_script = f'<script>window.NUMEROUS_BASE_PATH = "{path_prefix}";</script>'
+    base_css_link = (
+        '<link rel="stylesheet" href="/numerous-static/css/numerous-base.css">'
+    )
 
     # Modify the template content to include all components
     modified_html = template_content.replace(
+        "</head>",
+        f"{base_css_link}{base_path_script}</head>",
+    )
+    modified_html = modified_html.replace(
         "</body>",
-        f'{splash_screen}{error_modal}{session_lost_banner}\
-            <script src="/numerous.js"></script></body>',
+        f"{splash_screen}{error_modal}{session_lost_banner}"
+        f'<script src="/numerous.js"></script></body>',
     )
 
     return HTMLResponse(modified_html)
@@ -618,8 +643,48 @@ def create_app(  # noqa: PLR0912, C901
     login_template: str | None = None,
     public_routes: list[str] | None = None,
     protected_routes: list[str] | None = None,
+    # Multi-app configuration
+    path_prefix: str = "",
+    base_dir: Path | str | None = None,
+    theme_css: str | None = None,
     **kwargs: dict[str, Any],
 ) -> NumerousApp:
+    """
+    Create a Numerous application.
+
+    Args:
+        template: Path to the Jinja2 template file
+        dev: Enable development mode with debug logging
+        widgets: Dictionary of widget instances (optional if using app_generator)
+        app_generator: Function that returns widget dictionary (enables threaded mode)
+        auth_provider: Authentication provider instance
+        login_template: Custom login template path
+        public_routes: Routes that don't require authentication
+        protected_routes: Routes that require authentication
+        path_prefix: URL path prefix for multi-app deployments (e.g., "/app1")
+        base_dir: Base directory for templates and static files
+        theme_css: Custom CSS string for theming
+        **kwargs: Additional widget instances as keyword arguments
+
+    Returns:
+        Configured NumerousApp instance
+
+    Example:
+        Single app (traditional):
+        ```python
+        app = create_app(template="index.html.j2", dev=True, app_generator=run_app)
+        ```
+
+        Multi-app:
+        ```python
+        app1 = create_app(
+            template="index.html.j2",
+            path_prefix="/app1",
+            app_generator=run_app1,
+        )
+        ```
+
+    """
     if widgets is None:
         widgets = {}
 
@@ -650,6 +715,13 @@ def create_app(  # noqa: PLR0912, C901
     if module_path is None:
         raise ValueError("Could not determine app name or module path")
 
+    # Use provided base_dir or current working directory (for backwards compatibility)
+    if base_dir is not None:
+        app_base_dir = Path(base_dir) if isinstance(base_dir, str) else base_dir
+    else:
+        # Use cwd for backwards compatibility with tests that change directories
+        app_base_dir = Path.cwd()
+
     allow_threaded = False
     if app_generator is not None:
         allow_threaded = True
@@ -658,30 +730,62 @@ def create_app(  # noqa: PLR0912, C901
     logger.debug(
         f"App instances will be {'threaded' if allow_threaded else 'multiprocessed'}"
     )
+
+    # Use factory for multi-app mode, singleton for backwards compatibility
+    if path_prefix:
+        # Multi-app mode: use factory to create fresh instance
+        from .app_factory import create_numerous_app
+
+        return create_numerous_app(
+            base_dir=app_base_dir,
+            module_path=str(module_path),
+            template=template,
+            dev=dev,
+            path_prefix=path_prefix,
+            widgets=widgets,
+            allow_threaded=allow_threaded,
+            auth_provider=auth_provider,
+            login_template=login_template,
+            public_routes=public_routes,
+            protected_routes=protected_routes,
+            theme_css=theme_css,
+        )
+
+    # Single-app mode: use singleton for backwards compatibility
+    app = _get_or_create_singleton_app()
+
     if not is_process:
         # Optional: Configure static files (CSS, JS, images) only if directory exists
-        static_dir = BASE_DIR / "static"
+        static_dir = app_base_dir / "static"
         if static_dir.exists():
-            _app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+            app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
         # Add new mount for package static files
         package_static = PACKAGE_DIR / "static"
         if package_static.exists():
-            _app.mount(
+            app.mount(
                 "/numerous-static",
                 StaticFiles(directory=str(package_static)),
                 name="numerous_static",
             )
 
+        # Configure templates for this base_dir
+        app_templates = Jinja2Templates(
+            directory=[str(app_base_dir / "templates"), str(PACKAGE_DIR / "templates")]
+        )
+        app_templates.env.autoescape = False
+
         config = NumerousAppServerState(
             dev=dev,
             main_js=_load_main_js(),
             sessions={},
-            base_dir=str(BASE_DIR),
+            base_dir=str(app_base_dir),
             module_path=str(module_path),
             template=template,
-            internal_templates=templates,
+            internal_templates=app_templates,
             allow_threaded=allow_threaded,
+            path_prefix=path_prefix,
+            theme_css=theme_css,
             # Auth configuration
             auth_enabled=auth_provider is not None,
             login_template=login_template,
@@ -689,12 +793,12 @@ def create_app(  # noqa: PLR0912, C901
             protected_routes=protected_routes,
         )
 
-        _app.state.config = config
+        app.state.config = config
 
         # Setup authentication if provider is configured
         if auth_provider is not None:
             _setup_auth(
-                _app, auth_provider, login_template, public_routes, protected_routes
+                app, auth_provider, login_template, public_routes, protected_routes
             )
 
     if widgets:
@@ -708,9 +812,9 @@ def create_app(  # noqa: PLR0912, C901
             )
         }
 
-    _app.widgets = widgets
+    app.widgets = widgets
 
-    return _app
+    return app
 
 
 @_app.get("/api/describe")  # type: ignore[misc]

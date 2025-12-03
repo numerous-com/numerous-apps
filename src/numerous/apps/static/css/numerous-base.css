@@ -1,0 +1,579 @@
+/* ============================================
+   Numerous Apps - Base Theme
+   Version: 1.0.0
+   ============================================ */
+
+/* CSS Custom Properties (Design Tokens) */
+:root {
+    /* Color System - Dark Theme (Default) */
+    --numerous-color-bg: #0f0f13;
+    --numerous-color-surface: #1a1a22;
+    --numerous-color-surface-hover: #252530;
+    --numerous-color-primary: #6366f1;
+    --numerous-color-primary-hover: #818cf8;
+    --numerous-color-text: #e4e4e7;
+    --numerous-color-text-muted: #71717a;
+    --numerous-color-border: #27272a;
+
+    /* Status Colors */
+    --numerous-color-error: #ef4444;
+    --numerous-color-error-bg: rgba(239, 68, 68, 0.1);
+    --numerous-color-warning: #f59e0b;
+    --numerous-color-warning-bg: #fff3cd;
+    --numerous-color-warning-border: #ffeeba;
+    --numerous-color-warning-text: #856404;
+    --numerous-color-success: #22c55e;
+    --numerous-color-info: #3b82f6;
+    --numerous-color-info-bg: #e3f2fd;
+    --numerous-color-info-text: #1976d2;
+
+    /* Typography */
+    --numerous-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --numerous-font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+    /* Spacing & Sizing */
+    --numerous-radius-sm: 6px;
+    --numerous-radius-md: 8px;
+    --numerous-radius-lg: 12px;
+    --numerous-radius-xl: 16px;
+
+    /* Shadows */
+    --numerous-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --numerous-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --numerous-shadow-lg: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+
+    /* Transitions */
+    --numerous-transition-fast: 0.15s ease;
+    --numerous-transition-normal: 0.3s ease;
+}
+
+/* Light Theme */
+:root[data-theme="light"] {
+    --numerous-color-bg: #f8fafc;
+    --numerous-color-surface: #ffffff;
+    --numerous-color-surface-hover: #f1f5f9;
+    --numerous-color-text: #1e293b;
+    --numerous-color-text-muted: #64748b;
+    --numerous-color-border: #e2e8f0;
+    --numerous-color-info-bg: #e3f2fd;
+    --numerous-color-info-text: #1565c0;
+}
+
+/* ============================================
+   Base Reset & Typography
+   ============================================ */
+
+.numerous-reset {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.numerous-base {
+    font-family: var(--numerous-font-sans);
+    background: var(--numerous-color-bg);
+    color: var(--numerous-color-text);
+    line-height: 1.6;
+}
+
+/* ============================================
+   Login Page Components
+   ============================================ */
+
+.numerous-login-body {
+    font-family: var(--numerous-font-sans);
+    background: var(--numerous-color-bg);
+    color: var(--numerous-color-text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    margin: 0;
+}
+
+/* Subtle grid background for login */
+.numerous-login-body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: -1;
+}
+
+.numerous-login-container {
+    width: 100%;
+    max-width: 400px;
+    animation: numerous-fade-in 0.3s ease-out;
+}
+
+@keyframes numerous-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.numerous-login-card {
+    background: var(--numerous-color-surface);
+    border: 1px solid var(--numerous-color-border);
+    border-radius: var(--numerous-radius-lg);
+    padding: 2.5rem;
+    box-shadow: var(--numerous-shadow-lg);
+}
+
+.numerous-login-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.numerous-login-logo {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--numerous-color-primary), #8b5cf6);
+    border-radius: var(--numerous-radius-lg);
+}
+
+.numerous-login-logo svg {
+    width: 24px;
+    height: 24px;
+    fill: white;
+}
+
+.numerous-login-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    color: var(--numerous-color-text);
+}
+
+.numerous-login-subtitle {
+    color: var(--numerous-color-text-muted);
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+/* ============================================
+   Form Components
+   ============================================ */
+
+.numerous-form-group {
+    margin-bottom: 1.25rem;
+}
+
+.numerous-form-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--numerous-color-text);
+}
+
+.numerous-form-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-family: var(--numerous-font-sans);
+    background: var(--numerous-color-bg);
+    border: 1px solid var(--numerous-color-border);
+    border-radius: var(--numerous-radius-md);
+    color: var(--numerous-color-text);
+    transition: border-color var(--numerous-transition-fast), box-shadow var(--numerous-transition-fast);
+    box-sizing: border-box;
+}
+
+.numerous-form-input:focus {
+    outline: none;
+    border-color: var(--numerous-color-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.numerous-form-input::placeholder {
+    color: var(--numerous-color-text-muted);
+}
+
+/* ============================================
+   Button Components
+   ============================================ */
+
+.numerous-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: var(--numerous-font-sans);
+    border: none;
+    border-radius: var(--numerous-radius-md);
+    cursor: pointer;
+    transition: background-color var(--numerous-transition-fast), transform 0.1s;
+}
+
+.numerous-btn-primary {
+    width: 100%;
+    background: var(--numerous-color-primary);
+    color: white;
+}
+
+.numerous-btn-primary:hover {
+    background: var(--numerous-color-primary-hover);
+}
+
+.numerous-btn-primary:active {
+    transform: scale(0.98);
+}
+
+.numerous-btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.numerous-btn-secondary {
+    background: transparent;
+    border: 1px solid var(--numerous-color-border);
+    color: var(--numerous-color-text-muted);
+}
+
+.numerous-btn-secondary:hover {
+    background: var(--numerous-color-surface-hover);
+}
+
+/* ============================================
+   Error & Alert Components
+   ============================================ */
+
+.numerous-error-message {
+    display: none;
+    background: var(--numerous-color-error-bg);
+    border: 1px solid var(--numerous-color-error);
+    border-radius: var(--numerous-radius-md);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.875rem;
+    color: var(--numerous-color-error);
+}
+
+.numerous-error-message.visible {
+    display: block;
+    animation: numerous-shake 0.3s ease-out;
+}
+
+@keyframes numerous-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+/* Error Page */
+.numerous-error-page {
+    font-family: var(--numerous-font-sans);
+    line-height: 1.6;
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: var(--numerous-color-text);
+    background: var(--numerous-color-bg);
+}
+
+.numerous-error-container {
+    background-color: var(--numerous-color-error-bg);
+    border: 1px solid var(--numerous-color-error);
+    border-radius: var(--numerous-radius-md);
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.numerous-error-container h1 {
+    color: var(--numerous-color-error);
+    margin-top: 0;
+    margin-bottom: 1rem;
+}
+
+.numerous-error-content {
+    white-space: pre-wrap;
+    font-family: var(--numerous-font-mono);
+    background-color: var(--numerous-color-surface);
+    padding: 15px;
+    border-radius: var(--numerous-radius-md);
+    overflow-x: auto;
+}
+
+/* Error Modal */
+.numerous-error-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+}
+
+.numerous-error-modal.visible {
+    display: flex;
+}
+
+.numerous-error-modal-content {
+    background: var(--numerous-color-surface);
+    border: 1px solid var(--numerous-color-border);
+    border-radius: var(--numerous-radius-lg);
+    padding: 1.5rem;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: var(--numerous-shadow-lg);
+}
+
+.numerous-error-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--numerous-color-border);
+}
+
+.numerous-error-modal-title {
+    font-weight: 600;
+    color: var(--numerous-color-error);
+}
+
+.numerous-error-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--numerous-color-text-muted);
+    padding: 0;
+    line-height: 1;
+}
+
+.numerous-error-modal-close:hover {
+    color: var(--numerous-color-text);
+}
+
+.numerous-error-modal-body {
+    font-family: var(--numerous-font-mono);
+    font-size: 0.875rem;
+    white-space: pre-wrap;
+    background: var(--numerous-color-bg);
+    padding: 1rem;
+    border-radius: var(--numerous-radius-md);
+    margin-bottom: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* ============================================
+   Loading & Status Components
+   ============================================ */
+
+.numerous-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 80px;
+    background-color: var(--numerous-color-info-bg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 9999;
+    transition: transform var(--numerous-transition-normal);
+    box-shadow: var(--numerous-shadow-md);
+    padding: 0 12px;
+}
+
+.numerous-loading-overlay.hidden {
+    transform: translateY(-100%);
+}
+
+.numerous-loading-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--numerous-color-info-text);
+    flex-grow: 1;
+    justify-content: center;
+    padding-right: 24px;
+}
+
+.numerous-loading-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(25, 118, 210, 0.3);
+    border-top-color: var(--numerous-color-info-text);
+    border-radius: 50%;
+    animation: numerous-spin 0.8s linear infinite;
+}
+
+@keyframes numerous-spin {
+    to { transform: rotate(360deg); }
+}
+
+.numerous-dismiss-btn {
+    background: none;
+    border: none;
+    color: var(--numerous-color-info-text);
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--numerous-radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.numerous-dismiss-btn:hover {
+    background-color: var(--numerous-color-info-text);
+    color: white;
+}
+
+/* Connection Status */
+.numerous-connection-overlay {
+    background-color: var(--numerous-color-warning-bg);
+    border-bottom: 1px solid var(--numerous-color-warning-border);
+}
+
+.numerous-connection-content {
+    color: var(--numerous-color-warning-text);
+}
+
+/* Session Lost Banner */
+.numerous-session-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 80px;
+    background-color: var(--numerous-color-warning-bg);
+    border-bottom: 1px solid var(--numerous-color-warning-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 9999;
+    transition: transform var(--numerous-transition-normal);
+    box-shadow: var(--numerous-shadow-md);
+    padding: 0 12px;
+}
+
+.numerous-session-banner.hidden {
+    transform: translateY(-100%);
+}
+
+.numerous-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--numerous-color-warning-text);
+    flex-grow: 1;
+    justify-content: center;
+}
+
+.numerous-banner-icon {
+    font-size: 20px;
+}
+
+.numerous-banner-actions {
+    display: flex;
+    gap: 8px;
+    padding: 0 12px;
+}
+
+.numerous-banner-btn {
+    padding: 6px 12px;
+    border-radius: var(--numerous-radius-sm);
+    border: 1px solid;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.numerous-banner-btn-primary {
+    background-color: var(--numerous-color-primary);
+    border-color: var(--numerous-color-primary);
+    color: white;
+}
+
+.numerous-banner-btn-primary:hover {
+    background-color: var(--numerous-color-primary-hover);
+}
+
+.numerous-banner-btn-secondary {
+    background-color: transparent;
+    border-color: var(--numerous-color-text-muted);
+    color: var(--numerous-color-text-muted);
+}
+
+.numerous-banner-btn-secondary:hover {
+    opacity: 0.9;
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+.numerous-hidden {
+    display: none !important;
+}
+
+.numerous-flex-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.numerous-text-center {
+    text-align: center;
+}
+
+.numerous-text-muted {
+    color: var(--numerous-color-text-muted);
+}
+
+.numerous-footer-text {
+    text-align: center;
+    margin-top: 1.5rem;
+    font-size: 0.75rem;
+    color: var(--numerous-color-text-muted);
+}
+
+/* Button Loading State */
+.numerous-btn-loading .numerous-loading-spinner {
+    display: inline-block;
+    margin-right: 0.5rem;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+}
+
+.numerous-btn-loading .numerous-btn-text {
+    opacity: 0.8;
+}
+

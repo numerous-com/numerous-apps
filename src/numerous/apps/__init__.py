@@ -5,6 +5,7 @@ from functools import wraps
 from typing import Any, TypeVar
 
 from .app_server import create_app as create_app
+from .multi_app import combine_apps as combine_apps
 
 
 T = TypeVar("T")

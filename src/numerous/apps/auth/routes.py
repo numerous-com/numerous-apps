@@ -192,6 +192,7 @@ async def check_auth(user: OptionalUser) -> dict[str, Any]:
 def create_login_page_route(
     templates: Jinja2Templates,
     login_template: str | None = None,
+    base_path: str = "",
 ) -> Callable[..., Coroutine[Any, Any, Response]]:
     """
     Create the login page route with the given templates.
@@ -199,6 +200,7 @@ def create_login_page_route(
     Args:
         templates: Jinja2Templates instance
         login_template: Custom login template name (optional)
+        base_path: URL path prefix for multi-app deployments
 
     """
 
@@ -220,6 +222,7 @@ def create_login_page_route(
                 "request": request,
                 "next": next_url or "/",
                 "title": "Login",
+                "base_path": base_path,
             },
         )
 

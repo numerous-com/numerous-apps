@@ -8,6 +8,10 @@ const LOG_LEVELS = {
 };
 let currentLogLevel = LOG_LEVELS.ERROR; // Default log level
 
+// Get base path from injected variable or default to empty string
+// This is set by the server when the app is mounted at a sub-path
+const BASE_PATH = window.NUMEROUS_BASE_PATH || "";
+
 // Set debug level based on URL parameters
 function initializeDebugging() {
     // Check for debug parameter in URL
@@ -376,7 +380,7 @@ async function fetchWidgetConfigs() {
             ...getAuthHeaders()
         };
         
-        const response = await fetch(`/api/widgets?session_id=${sessionId}`, {
+        const response = await fetch(`${BASE_PATH}/api/widgets?session_id=${sessionId}`, {
             headers: headers,
             credentials: 'include'
         });
@@ -384,7 +388,7 @@ async function fetchWidgetConfigs() {
         // Handle auth errors
         if (response.status === 401) {
             console.warn('Authentication required - redirecting to login');
-            window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+            window.location.href = `${BASE_PATH}/login?next=` + encodeURIComponent(window.location.pathname);
             return {};
         }
         
@@ -631,7 +635,7 @@ class WebSocketManager {
         
         // Determine protocol (ws or wss)
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        let url = `${protocol}//${window.location.host}/ws/${this.clientId}/${this.sessionId}`;
+        let url = `${protocol}//${window.location.host}${BASE_PATH}/ws/${this.clientId}/${this.sessionId}`;
         
         // Add auth token if available (for authenticated WebSocket connections)
         if (window.numerousAuth && window.numerousAuth.getWebSocketToken()) {

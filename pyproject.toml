@@ -108,6 +108,7 @@ namespaces = true
     "py.typed",
     "js/*.js",
     "static/*.md",
+    "static/css/*.css",
     "templates/*.html.j2",
     "bootstrap_app/*",
     "bootstrap_app/static/*",
