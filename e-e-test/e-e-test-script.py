@@ -104,12 +104,12 @@ def test_numerous_bootstrap_integration(tmp_path: Path) -> None:
     stderr_thread.start()
 
     logger.info("Started numerous-bootstrap process")
-    # wait for server to start
-    time.sleep(10)
+    # wait for server to start - needs longer on first run due to pip install
+    time.sleep(30)
     try:
         # Wait for server to start or detect early failure
         start_time = time.time()
-        timeout = 10  # seconds
+        timeout = 120  # seconds - pip install of numpy/h5py can take a while
         server_ready = False
 
         while (time.time() - start_time) < timeout:
@@ -146,7 +146,10 @@ def test_numerous_bootstrap_integration(tmp_path: Path) -> None:
                 logger.info(f"Stderr: {stderr}")
                 raise RuntimeError("Process terminated unexpectedly")
             # If we got here, we timed out waiting for the server
-            raise TimeoutError(f"Server failed to start within {timeout} seconds.\n")
+            raise TimeoutError(
+                f"Server failed to start within {timeout} seconds. "
+                "This may happen if dependency installation takes longer than expected."
+            )
         logger.info(f"Server started on {host}:{port}")
         # Test the endpoints
         with httpx.Client(base_url=f"http://{host}:{port}") as client:
