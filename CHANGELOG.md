@@ -2,6 +2,15 @@
 
 
 
+## v0.4.1 (2025-12-03)
+
+### Fix
+
+* fix(e2e): add Playwright browser tests for UI verification ([`0cfbacc`](https://github.com/numerous-com/numerous-apps/commit/0cfbacc3178dace02fa50372a4a0b3100267ea92))
+
+* fix(e2e): increase timeouts to allow pip install to complete ([`6700618`](https://github.com/numerous-com/numerous-apps/commit/6700618d676940b7cbf7dc9a9561f56f8d9b56a3))
+
+
 ## v0.4.0 (2025-03-13)
 
 ### Feature
