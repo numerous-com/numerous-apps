@@ -77,11 +77,20 @@ def test_install_requirements_failure(mock_project_path, caplog):
 def test_run_app(mock_project_path):
     with patch("subprocess.run") as mock_run:
         run_app(mock_project_path)
-        mock_run.assert_called_once_with(
-            ["uvicorn", "app:app", "--port", "8000", "--host", "127.0.0.1"],
-            cwd=mock_project_path,
-            check=False,
-        )
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args
+        # Check the command arguments
+        assert call_args.kwargs["cwd"] == mock_project_path
+        assert call_args.kwargs["check"] is False
+        # Command should use sys.executable -m uvicorn
+        cmd = call_args.args[0]
+        assert "-m" in cmd
+        assert "uvicorn" in cmd
+        assert "app:app" in cmd
+        assert "--port" in cmd
+        assert "8000" in cmd
+        assert "--host" in cmd
+        assert "127.0.0.1" in cmd
 
 
 def test_main_basic_flow(caplog):

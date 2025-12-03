@@ -260,8 +260,19 @@ def run_app(
     if env:
         run_env.update(env)
 
+    # Use sys.executable to ensure we run uvicorn from the same Python
+    # environment that's running this script (important for venvs)
     subprocess.run(  # noqa: S603
-        ["uvicorn", "app:app", "--port", str(port), "--host", str(host)],  # noqa: S607
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "app:app",
+            "--port",
+            str(port),
+            "--host",
+            str(host),
+        ],
         cwd=project_path,
         check=False,
         env=run_env,

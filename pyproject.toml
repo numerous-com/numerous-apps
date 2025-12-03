@@ -180,6 +180,7 @@ exclude = ["examples", "e-e-test"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 addopts = "--cov=numerous.apps --cov-report=term-missing --cov-report=html"
 testpaths = ["tests"]
 
