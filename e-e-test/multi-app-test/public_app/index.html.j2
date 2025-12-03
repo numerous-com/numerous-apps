@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Public App</title>
+    <style>
+        body {
+            font-family: var(--numerous-font-sans, 'Inter', sans-serif);
+            background: var(--numerous-color-bg, #0f0f13);
+            color: var(--numerous-color-text, #e4e4e7);
+            margin: 0;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: var(--numerous-color-primary, #6366f1);
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--numerous-color-text-muted, #71717a);
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--numerous-color-surface, #1a1a22);
+            border: 1px solid var(--numerous-color-border, #27272a);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .widget-row {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+        }
+
+        nav a {
+            color: var(--numerous-color-primary, #6366f1);
+            text-decoration: none;
+            margin-right: 1rem;
+        }
+
+        nav a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <a href="/public">Public App</a>
+            <a href="/admin">Admin App</a>
+        </nav>
+
+        <h1>🌐 Public App</h1>
+        <p class="subtitle">No authentication required</p>
+
+        <div class="card">
+            <h2>Counter Demo</h2>
+            <div class="widget-row">
+                {{ counter }}
+                {{ increment_btn }}
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Message</h2>
+            {{ message }}
+        </div>
+    </div>
+</body>
+</html>
+

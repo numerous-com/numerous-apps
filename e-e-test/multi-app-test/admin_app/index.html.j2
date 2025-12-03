@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <style>
+        body {
+            font-family: var(--numerous-font-sans, 'Inter', sans-serif);
+            background: var(--numerous-color-bg, #0f0f13);
+            color: var(--numerous-color-text, #e4e4e7);
+            margin: 0;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #ef4444;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--numerous-color-text-muted, #71717a);
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--numerous-color-surface, #1a1a22);
+            border: 1px solid var(--numerous-color-border, #27272a);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .card.admin {
+            border-color: #ef4444;
+        }
+
+        .widget-row {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        nav {
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        nav a {
+            color: var(--numerous-color-primary, #6366f1);
+            text-decoration: none;
+            margin-right: 1rem;
+        }
+
+        nav a:hover {
+            text-decoration: underline;
+        }
+
+        .logout-btn {
+            background: var(--numerous-color-error, #ef4444);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .logout-btn:hover {
+            opacity: 0.9;
+        }
+
+        .badge {
+            background: #ef4444;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <div>
+                <a href="/public">Public App</a>
+                <a href="/admin">Admin App</a>
+                <span class="badge">PROTECTED</span>
+            </div>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </nav>
+
+        <h1>🔒 Admin Dashboard</h1>
+        <p class="subtitle">Database authentication required</p>
+
+        <div class="card admin">
+            <h2>Admin Counter</h2>
+            <div class="widget-row">
+                {{ admin_counter }}
+                {{ admin_btn }}
+            </div>
+        </div>
+
+        <div class="card admin">
+            <h2>Admin Message</h2>
+            {{ admin_message }}
+        </div>
+
+        <div class="card admin">
+            <h2>Secret Value</h2>
+            {{ secret_value }}
+        </div>
+    </div>
+
+    <script>
+        function logout() {
+            const basePath = window.NUMEROUS_BASE_PATH || '';
+            fetch(`${basePath}/api/auth/logout`, {
+                method: 'POST',
+                credentials: 'include'
+            }).then(() => {
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('user');
+                window.location.href = `${basePath}/login`;
+            });
+        }
+    </script>
+</body>
+</html>
+
