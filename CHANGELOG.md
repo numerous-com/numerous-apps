@@ -2,6 +2,40 @@
 
 
 
+## v0.5.0 (2025-12-03)
+
+### Feature
+
+* feat(auth): add pluggable authentication system
+
+- Add BaseAuthProvider protocol for custom authentication implementations
+- Implement EnvAuthProvider for environment variable-based auth
+- Implement DatabaseAuthProvider with SQLAlchemy (SQLite/PostgreSQL)
+- Add JWT-based access and refresh token management
+- Create auth middleware for route protection
+- Add login page template with styled form
+- Create client-side auth.js module for token management
+- Update numerous.js to include auth headers in WebSocket connections
+- Add --with-auth and --with-db-auth options to numerous-bootstrap
+- Add comprehensive pytest tests for auth module
+- Add Jest tests for AuthManager
+- Add e2e tests for auth login flow
+- Update documentation with auth feature guide ([`bacfcc6`](https://github.com/numerous-com/numerous-apps/commit/bacfcc6731ddaa68f4c0cbd2fdfb754763b795df))
+
+### Fix
+
+* fix(e2e): resolve &#39;Text file busy&#39; error when reusing venv
+
+- Reuse existing venv instead of recreating it
+- Add 3-second delay between tests for process cleanup ([`2c42095`](https://github.com/numerous-com/numerous-apps/commit/2c420950c81b19460cb0c09e87625836dd48637c))
+
+* fix: CI test failures for bootstrap and asyncio config
+
+- Fix test_run_app to handle new env parameter and check command structure
+- Use sys.executable -m uvicorn to ensure correct Python in venvs
+- Add asyncio_default_fixture_loop_scope to fix pytest deprecation warning ([`4dc7c1f`](https://github.com/numerous-com/numerous-apps/commit/4dc7c1f50b23e6f108494131f89f968e40104d30))
+
+
 ## v0.4.3 (2025-12-03)
 
 ### Fix
