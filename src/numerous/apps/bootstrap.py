@@ -16,6 +16,9 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+# Package directory for internal templates and static files
+PACKAGE_DIR = Path(__file__).parent
+
 
 def copy_template(destination_path: Path) -> None:
     """Copy template directory to destination."""
@@ -30,6 +33,50 @@ def copy_template(destination_path: Path) -> None:
     except Exception:
         logging.exception("Error copying template.")
         sys.exit(1)
+
+
+def export_templates(project_path: Path) -> None:
+    """
+    Export internal templates to the project directory for customization.
+
+    Copies the internal Jinja2 templates (login, error pages, splash screen, etc.)
+    and static CSS files to the project directory so developers can customize them.
+
+    Args:
+        project_path: Path to the project directory where templates will be exported.
+
+    """
+    templates_source = PACKAGE_DIR / "templates"
+    templates_dest = project_path / "templates"
+    static_css_source = PACKAGE_DIR / "static" / "css"
+    static_css_dest = project_path / "static" / "css"
+
+    # Export template files
+    if templates_source.exists():
+        templates_dest.mkdir(parents=True, exist_ok=True)
+        for template_file in templates_source.glob("*.j2"):
+            dest_file = templates_dest / template_file.name
+            if dest_file.exists():
+                logging.info(f"Template already exists, skipping: {template_file.name}")
+            else:
+                shutil.copy2(template_file, dest_file)
+                logging.info(f"Exported template: {template_file.name}")
+
+    # Export static CSS files (numerous-base.css)
+    if static_css_source.exists():
+        static_css_dest.mkdir(parents=True, exist_ok=True)
+        for css_file in static_css_source.glob("*.css"):
+            dest_file = static_css_dest / css_file.name
+            if dest_file.exists():
+                logging.info(f"CSS file already exists, skipping: {css_file.name}")
+            else:
+                shutil.copy2(css_file, dest_file)
+                logging.info(f"Exported CSS file: {css_file.name}")
+
+    logging.info(
+        f"Templates exported to {templates_dest}. "
+        "You can now customize these files for your app."
+    )
 
 
 def setup_auth(project_path: Path) -> None:
@@ -306,6 +353,11 @@ def main() -> None:
         action="store_true",
         help="Enable authentication with DatabaseAuthProvider (SQLite)",
     )
+    parser.add_argument(
+        "--export-templates",
+        action="store_true",
+        help="Export internal templates (login, error pages, etc.) for customization",
+    )
 
     args = parser.parse_args()
 
@@ -323,6 +375,10 @@ def main() -> None:
         setup_auth(project_path)
     elif args.with_db_auth:
         setup_db_auth(project_path)
+
+    # Export templates if requested
+    if args.export_templates:
+        export_templates(project_path)
 
     # Install dependencies unless --skip-deps is specified
     if not args.skip_deps:

@@ -575,6 +575,77 @@ def test_numerous_bootstrap_with_auth(tmp_path: Path) -> None:
     logger.info(f"Auth process return code: {process.returncode}")
 
 
+def test_numerous_bootstrap_with_export_templates(tmp_path: Path) -> None:
+    """Test the numerous-bootstrap command with --export-templates option."""
+    logger.info("Starting test_numerous_bootstrap_with_export_templates")
+    # Create virtual environment and install package
+    venv_dir = create_venv(tmp_path)
+    venv_python = get_venv_python(venv_dir)
+    install_package(venv_python, tmp_path)
+
+    app_path = tmp_path / "test-export-templates-app"
+
+    # Run numerous-bootstrap with --export-templates flag
+    process = subprocess.run(
+        [
+            venv_python,
+            "-m",
+            "numerous.apps.bootstrap",
+            str(app_path),
+            "--skip-deps",
+            "--run-skip",
+            "--export-templates",
+        ],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+    )
+
+    logger.info(f"Stdout: {process.stdout}")
+    logger.info(f"Stderr: {process.stderr}")
+
+    # Check process succeeded
+    assert process.returncode == 0, f"Bootstrap failed: {process.stderr}"
+    logger.info("Bootstrap with --export-templates completed successfully")
+
+    # Verify templates directory was created and contains expected files
+    templates_dir = app_path / "templates"
+    assert templates_dir.exists(), "templates directory was not created"
+    logger.info("✓ templates directory exists")
+
+    expected_templates = [
+        "login.html.j2",
+        "error.html.j2",
+        "error_modal.html.j2",
+        "splash_screen.html.j2",
+        "session_lost_banner.html.j2",
+        "app_process_error.html.j2",
+    ]
+
+    for template_name in expected_templates:
+        template_file = templates_dir / template_name
+        assert template_file.exists(), f"Template {template_name} was not exported"
+        assert template_file.stat().st_size > 0, f"Template {template_name} is empty"
+        logger.info(f"✓ {template_name} exists and has content")
+
+    # Verify CSS files were exported
+    css_dir = app_path / "static" / "css"
+    assert css_dir.exists(), "static/css directory was not created"
+    logger.info("✓ static/css directory exists")
+
+    css_file = css_dir / "numerous-base.css"
+    assert css_file.exists(), "numerous-base.css was not exported"
+    assert css_file.stat().st_size > 0, "numerous-base.css is empty"
+    logger.info("✓ numerous-base.css exists and has content")
+
+    # Verify the app's own index.html.j2 still exists (from bootstrap_app)
+    app_template = app_path / "index.html.j2"
+    assert app_template.exists(), "index.html.j2 was not created"
+    logger.info("✓ index.html.j2 exists")
+
+    logger.info("All export_templates tests passed!")
+
+
 def test_numerous_bootstrap_with_db_auth(tmp_path: Path) -> None:
     """Test the numerous-bootstrap command with --with-db-auth option."""
     logger.info("Starting test_numerous_bootstrap_with_db_auth")
@@ -789,6 +860,13 @@ def main():
             # Run the database auth bootstrap test
             test_numerous_bootstrap_with_db_auth(tmp_path)
             logger.info("Database auth bootstrap tests passed!")
+            
+            # Wait for any lingering processes to fully terminate
+            time.sleep(3)
+            
+            # Run the export templates bootstrap test
+            test_numerous_bootstrap_with_export_templates(tmp_path)
+            logger.info("Export templates bootstrap tests passed!")
             
             logger.info("All tests passed successfully!")
         except Exception as e:
