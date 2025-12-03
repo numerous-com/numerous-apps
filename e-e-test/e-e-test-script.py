@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import logging
 import os
 import signal
@@ -103,6 +104,108 @@ def run_browser_tests(host: str, port: int) -> None:
             logger.info("✓ Footer is visible with correct text")
 
             logger.info("All Playwright browser tests passed!")
+
+        finally:
+            context.close()
+            browser.close()
+
+
+def run_auth_browser_tests(host: str, port: int) -> None:
+    """Run Playwright browser tests to verify auth functionality."""
+    logger.info("Starting Playwright auth browser tests")
+    base_url = f"http://{host}:{port}"
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+
+        try:
+            # Test 1: Unauthenticated access redirects to login
+            logger.info("Test: Unauthenticated access redirects to login")
+            page.goto(base_url)
+            page.wait_for_timeout(1000)  # Wait for redirect
+            # URL may include query params like ?next=/
+            current_url = page.url
+            assert "/login" in current_url, f"Expected redirect to login, got {current_url}"
+            logger.info("✓ Redirected to login page")
+
+            # Test 2: Login page shows login form
+            logger.info("Test: Login page shows login form")
+            username_input = page.locator('input[name="username"]')
+            password_input = page.locator('input[name="password"]')
+            login_button = page.locator('button[type="submit"]')
+            expect(username_input).to_be_visible()
+            expect(password_input).to_be_visible()
+            expect(login_button).to_be_visible()
+            logger.info("✓ Login form is visible")
+
+            # Test 3: Invalid credentials show error
+            logger.info("Test: Invalid credentials show error")
+            username_input.fill("wronguser")
+            password_input.fill("wrongpass")
+            login_button.click()
+            page.wait_for_timeout(1000)  # Wait for response
+            # Should still be on login page
+            current_url = page.url
+            assert "/login" in current_url, f"Expected to stay on login page, got {current_url}"
+            logger.info("✓ Invalid credentials handled correctly")
+
+            # Test 4: Valid credentials redirect to app
+            logger.info("Test: Valid credentials redirect to app")
+            # Clear previous values
+            username_input.clear()
+            password_input.clear()
+            username_input.fill("admin")
+            password_input.fill("admin123")
+            login_button.click()
+            page.wait_for_timeout(2000)  # Wait for redirect and app to load
+            # Should be redirected away from login
+            current_url = page.url
+            assert "/login" not in current_url, f"Expected to be redirected from login, but URL is {current_url}"
+            logger.info("✓ Valid credentials redirect to app")
+
+            # Test 5: App page loads after authentication
+            logger.info("Test: App page loads after authentication")
+            expect(page).to_have_title("Numerous Demo App")
+            logger.info("✓ App title is correct after login")
+
+            # Test 6: Counter widget is visible after login
+            logger.info("Test: Counter widget is visible after login")
+            counter_label = page.get_by_text("Counter:")
+            expect(counter_label).to_be_visible()
+            logger.info("✓ Counter widget is visible")
+
+            # Test 7: Increment button works after login
+            logger.info("Test: Increment button functionality after login")
+            increment_button = page.get_by_role("button", name="Increment Counter")
+            expect(increment_button).to_be_visible()
+            counter_input = page.locator("input[type='number']").first
+            initial_value = counter_input.input_value()
+            logger.info(f"Initial counter value: {initial_value}")
+            increment_button.click()
+            page.wait_for_timeout(500)
+            new_value = counter_input.input_value()
+            logger.info(f"New counter value: {new_value}")
+            assert int(new_value) == int(initial_value) + 1, (
+                f"Counter did not increment: {initial_value} -> {new_value}"
+            )
+            logger.info("✓ Counter incremented successfully after login")
+
+            # Test 8: Logout functionality
+            logger.info("Test: Logout functionality")
+            # Look for logout button or link
+            logout_element = page.locator('[data-action="logout"], button:has-text("Logout"), a:has-text("Logout")')
+            if logout_element.count() > 0:
+                logout_element.first.click()
+                page.wait_for_timeout(1000)
+                current_url = page.url
+                assert "/login" in current_url, f"Expected redirect to login, got {current_url}"
+                logger.info("✓ Logout redirects to login page")
+            else:
+                logger.info("⊘ Logout button not found (skipped)")
+
+            logger.info("All Playwright auth browser tests passed!")
 
         finally:
             context.close()
@@ -296,6 +399,365 @@ def test_numerous_bootstrap_integration(tmp_path: Path) -> None:
     # assert process.returncode in (0, -15)  # -15 is SIGTERM
 
 
+def test_numerous_bootstrap_with_auth(tmp_path: Path) -> None:
+    """Test the numerous-bootstrap command with --with-auth option."""
+    logger.info("Starting test_numerous_bootstrap_with_auth")
+    # Create virtual environment and install package
+    venv_dir = create_venv(tmp_path)
+    venv_python = get_venv_python(venv_dir)
+    install_package(venv_python, tmp_path)
+    
+    # Start the numerous-bootstrap process with auth enabled
+    port = 8766  # Use different port from non-auth test
+    host = "127.0.0.1"
+    
+    # Set up auth environment variables
+    auth_env = {
+        **os.environ,
+        "PYTHONPATH": str(tmp_path),
+        "NUMEROUS_JWT_SECRET": "test-secret-key-for-e2e-auth",
+        "NUMEROUS_AUTH_USERS": json.dumps([
+            {"username": "admin", "password": "admin123", "is_admin": True},
+            {"username": "user", "password": "user123", "roles": ["viewer"]},
+        ]),
+    }
+    
+    process = subprocess.Popen(
+        [
+            venv_python,
+            "-m",
+            "numerous.apps.bootstrap",
+            tmp_path / "test-auth-app",
+            "--port",
+            str(port),
+            "--host",
+            str(host),
+            "--with-auth",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=auth_env,
+        text=True,
+        bufsize=1,
+        preexec_fn=(
+            os.setsid if sys.platform != "win32" else None
+        ),
+    )
+
+    # Create thread to continuously read and log output
+    def log_output(pipe, log_level):
+        for line in iter(pipe.readline, ""):
+            log_level(line.strip())
+
+    from threading import Thread
+
+    stdout_thread = Thread(
+        target=log_output, args=(process.stdout, logger.info), daemon=True
+    )
+    stderr_thread = Thread(
+        target=log_output, args=(process.stderr, logger.error), daemon=True
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+
+    logger.info("Started numerous-bootstrap process with auth")
+    # wait for server to start
+    time.sleep(30)
+    
+    try:
+        # Wait for server to start or detect early failure
+        start_time = time.time()
+        timeout = 120  # seconds
+        server_ready = False
+
+        while (time.time() - start_time) < timeout:
+            logger.info(f"Waiting for auth server to start on {host}:{port}")
+            if process.poll() is not None:
+                logger.info("Process terminated unexpectedly.")
+                stdout, stderr = process.communicate()
+                logger.info(f"Stdout: {stdout}")
+                logger.info(f"Stderr: {stderr}")
+                raise RuntimeError("Process terminated unexpectedly")
+
+            try:
+                logger.info(f"Checking if auth server is responding on {host}:{port}")
+                with httpx.Client(base_url=f"http://{host}:{port}", follow_redirects=False) as client:
+                    response = client.get("/")
+                    # With auth, we expect a redirect to login (302) or success (200)
+                    if response.status_code in (200, 302, 307):
+                        server_ready = True
+                        break
+            except httpx.ConnectError:
+                logger.info(f"Auth server not responding on {host}:{port}")
+                time.sleep(1)
+                continue
+
+        logger.info(f"Auth server ready: {server_ready}")
+        if not server_ready:
+            if process.poll() is not None or True:
+                stdout, stderr = process.communicate()
+                logger.info("Process terminated unexpectedly.")
+                logger.info(f"Stdout: {stdout}")
+                logger.info(f"Stderr: {stderr}")
+                raise RuntimeError("Process terminated unexpectedly")
+            raise TimeoutError(
+                f"Auth server failed to start within {timeout} seconds."
+            )
+        
+        logger.info(f"Auth server started on {host}:{port}")
+        
+        # Test the auth endpoints
+        with httpx.Client(base_url=f"http://{host}:{port}", follow_redirects=False) as client:
+            # Test that home redirects to login
+            response = client.get("/")
+            assert response.status_code in (302, 307), f"Expected redirect, got {response.status_code}"
+            logger.info("Home endpoint redirects to login (auth working)")
+            
+            # Test login endpoint exists
+            response = client.get("/login")
+            assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+            logger.info("Login page accessible")
+            
+            # Test API auth check
+            response = client.get("/api/auth/check")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["authenticated"] is False
+            logger.info("Auth check reports not authenticated")
+            
+            # Test login with valid credentials
+            response = client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "admin123"},
+            )
+            assert response.status_code == 200, f"Login failed: {response.text}"
+            login_data = response.json()
+            assert "access_token" in login_data
+            assert login_data["user"]["username"] == "admin"
+            logger.info("API login successful")
+
+        # Run Playwright auth browser tests
+        run_auth_browser_tests(host, port)
+
+    finally:
+        logger.info(f"Terminating auth server on {host}:{port}")
+
+        if sys.platform == "win32":
+            try:
+                parent = psutil.Process(process.pid)
+                children = parent.children(recursive=True)
+                for child in children:
+                    child.terminate()
+                gone, alive = psutil.wait_procs(children, timeout=3)
+                for p in alive:
+                    p.kill()
+                parent.terminate()
+                parent.wait(3)
+            except psutil.NoSuchProcess:
+                pass
+        else:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                process.wait()
+
+        logger.info("Auth server terminated")
+
+    logger.info(f"Auth process return code: {process.returncode}")
+
+
+def test_numerous_bootstrap_with_db_auth(tmp_path: Path) -> None:
+    """Test the numerous-bootstrap command with --with-db-auth option."""
+    logger.info("Starting test_numerous_bootstrap_with_db_auth")
+    # Create virtual environment and install package
+    venv_dir = create_venv(tmp_path)
+    venv_python = get_venv_python(venv_dir)
+    install_package(venv_python, tmp_path)
+    
+    # Install database auth dependencies
+    logger.info("Installing database auth dependencies...")
+    try:
+        subprocess.run(
+            [venv_python, "-m", "pip", "install", "sqlalchemy[asyncio]>=2.0.0", "aiosqlite>=0.19.0", "bcrypt>=4.1.0"],
+            check=True,
+            capture_output=True,
+        )
+        logger.info("Database auth dependencies installed")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to install database auth deps: {e}")
+        raise
+    
+    # Start the numerous-bootstrap process with db auth enabled
+    port = 8767  # Use different port from other tests
+    host = "127.0.0.1"
+    
+    # Set up auth environment variables
+    auth_env = {
+        **os.environ,
+        "PYTHONPATH": str(tmp_path),
+        "NUMEROUS_JWT_SECRET": "test-secret-key-for-e2e-db-auth",
+    }
+    
+    process = subprocess.Popen(
+        [
+            venv_python,
+            "-m",
+            "numerous.apps.bootstrap",
+            tmp_path / "test-db-auth-app",
+            "--port",
+            str(port),
+            "--host",
+            str(host),
+            "--with-db-auth",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=auth_env,
+        text=True,
+        bufsize=1,
+        preexec_fn=(
+            os.setsid if sys.platform != "win32" else None
+        ),
+    )
+
+    # Create thread to continuously read and log output
+    def log_output(pipe, log_level):
+        for line in iter(pipe.readline, ""):
+            log_level(line.strip())
+
+    from threading import Thread
+
+    stdout_thread = Thread(
+        target=log_output, args=(process.stdout, logger.info), daemon=True
+    )
+    stderr_thread = Thread(
+        target=log_output, args=(process.stderr, logger.error), daemon=True
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+
+    logger.info("Started numerous-bootstrap process with database auth")
+    # wait for server to start - longer for db auth due to extra deps
+    time.sleep(45)
+    
+    try:
+        # Wait for server to start or detect early failure
+        start_time = time.time()
+        timeout = 180  # seconds - longer for db auth due to extra deps
+        server_ready = False
+
+        while (time.time() - start_time) < timeout:
+            logger.info(f"Waiting for db auth server to start on {host}:{port}")
+            if process.poll() is not None:
+                logger.info("Process terminated unexpectedly.")
+                stdout, stderr = process.communicate()
+                logger.info(f"Stdout: {stdout}")
+                logger.info(f"Stderr: {stderr}")
+                raise RuntimeError("Process terminated unexpectedly")
+
+            try:
+                logger.info(f"Checking if db auth server is responding on {host}:{port}")
+                with httpx.Client(base_url=f"http://{host}:{port}", follow_redirects=False) as client:
+                    response = client.get("/")
+                    # With auth, we expect a redirect to login (302) or success (200)
+                    if response.status_code in (200, 302, 307):
+                        server_ready = True
+                        break
+            except httpx.ConnectError:
+                logger.info(f"DB auth server not responding on {host}:{port}")
+                time.sleep(1)
+                continue
+
+        logger.info(f"DB auth server ready: {server_ready}")
+        if not server_ready:
+            if process.poll() is not None or True:
+                stdout, stderr = process.communicate()
+                logger.info("Process terminated unexpectedly.")
+                logger.info(f"Stdout: {stdout}")
+                logger.info(f"Stderr: {stderr}")
+                raise RuntimeError("Process terminated unexpectedly")
+            raise TimeoutError(
+                f"DB auth server failed to start within {timeout} seconds."
+            )
+        
+        logger.info(f"DB auth server started on {host}:{port}")
+        
+        # Test the auth endpoints
+        with httpx.Client(base_url=f"http://{host}:{port}", follow_redirects=False) as client:
+            # Test that home redirects to login
+            response = client.get("/")
+            assert response.status_code in (302, 307), f"Expected redirect, got {response.status_code}"
+            logger.info("Home endpoint redirects to login (db auth working)")
+            
+            # Test login endpoint exists
+            response = client.get("/login")
+            assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+            logger.info("Login page accessible")
+            
+            # Test API auth check
+            response = client.get("/api/auth/check")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["authenticated"] is False
+            logger.info("Auth check reports not authenticated")
+            
+            # Test login with valid credentials (created by setup_default_users)
+            response = client.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": "admin123"},
+            )
+            assert response.status_code == 200, f"Login failed: {response.text}"
+            login_data = response.json()
+            assert "access_token" in login_data
+            assert login_data["user"]["username"] == "admin"
+            assert login_data["user"]["is_admin"] is True
+            logger.info("API login successful with database auth")
+            
+            # Test login with regular user
+            response = client.post(
+                "/api/auth/login",
+                json={"username": "user", "password": "user1234"},
+            )
+            assert response.status_code == 200, f"User login failed: {response.text}"
+            user_data = response.json()
+            assert user_data["user"]["username"] == "user"
+            assert user_data["user"]["is_admin"] is False
+            logger.info("Regular user login successful with database auth")
+
+        # Run Playwright auth browser tests (same flow as env auth)
+        run_auth_browser_tests(host, port)
+
+    finally:
+        logger.info(f"Terminating db auth server on {host}:{port}")
+
+        if sys.platform == "win32":
+            try:
+                parent = psutil.Process(process.pid)
+                children = parent.children(recursive=True)
+                for child in children:
+                    child.terminate()
+                gone, alive = psutil.wait_procs(children, timeout=3)
+                for p in alive:
+                    p.kill()
+                parent.terminate()
+                parent.wait(3)
+            except psutil.NoSuchProcess:
+                pass
+        else:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                process.wait()
+
+        logger.info("DB auth server terminated")
+
+    logger.info(f"DB auth process return code: {process.returncode}")
+
+
 def main():
     """Main entry point for the test script."""
     import tempfile
@@ -303,7 +765,18 @@ def main():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         try:
+            # Run the regular bootstrap integration test
             test_numerous_bootstrap_integration(tmp_path)
+            logger.info("Regular bootstrap tests passed!")
+            
+            # Run the auth-enabled bootstrap test
+            test_numerous_bootstrap_with_auth(tmp_path)
+            logger.info("Auth bootstrap tests passed!")
+            
+            # Run the database auth bootstrap test
+            test_numerous_bootstrap_with_db_auth(tmp_path)
+            logger.info("Database auth bootstrap tests passed!")
+            
             logger.info("All tests passed successfully!")
         except Exception as e:
             logger.error(f"Test failed: {e}")

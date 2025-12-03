@@ -341,13 +341,53 @@ async function loadWidget(moduleSource) {
     }
 }
 var wsManager;
+
+// Helper function to get auth headers if auth is enabled
+function getAuthHeaders() {
+    if (window.numerousAuth && window.numerousAuth.isAuthenticated()) {
+        return window.numerousAuth.getAuthHeaders();
+    }
+    return {};
+}
+
+// Helper function to get user context for widgets
+function getUserContext() {
+    if (window.getNumerousUserContext) {
+        return window.getNumerousUserContext();
+    }
+    return {
+        authenticated: false,
+        username: null,
+        user_id: null,
+        roles: [],
+        is_admin: false
+    };
+}
+
 // Function to fetch widget configurations and states from the server
 async function fetchWidgetConfigs() {
     try {
         console.log("Fetching widget configs and states");
 
         let sessionId = sessionStorage.getItem('session_id');
-        const response = await fetch(`/api/widgets?session_id=${sessionId}`);
+        
+        // Include auth headers if available
+        const headers = {
+            ...getAuthHeaders()
+        };
+        
+        const response = await fetch(`/api/widgets?session_id=${sessionId}`, {
+            headers: headers,
+            credentials: 'include'
+        });
+        
+        // Handle auth errors
+        if (response.status === 401) {
+            console.warn('Authentication required - redirecting to login');
+            window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+            return {};
+        }
+        
         const data = await response.json();
 
         sessionStorage.setItem('session_id', data.session_id);
@@ -517,6 +557,26 @@ window.numerousRefresh = {
     reloadWidgetData: function(widgetId) {
         log(LOG_LEVELS.INFO, `Forcing reload of data for widget ${widgetId || 'all'}`);
         return refreshWidgetState(widgetId);
+    },
+    
+    // Get current user context (for app developers)
+    getUserContext: function() {
+        return getUserContext();
+    },
+    
+    // Check if user is authenticated
+    isAuthenticated: function() {
+        const ctx = getUserContext();
+        return ctx.authenticated;
+    },
+    
+    // Logout (if auth is enabled)
+    logout: function() {
+        if (window.numerousAuth) {
+            window.numerousAuth.logout();
+        } else {
+            log(LOG_LEVELS.WARN, 'Auth not enabled');
+        }
     }
 };
 
@@ -571,7 +631,13 @@ class WebSocketManager {
         
         // Determine protocol (ws or wss)
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${protocol}//${window.location.host}/ws/${this.clientId}/${this.sessionId}`;
+        let url = `${protocol}//${window.location.host}/ws/${this.clientId}/${this.sessionId}`;
+        
+        // Add auth token if available (for authenticated WebSocket connections)
+        if (window.numerousAuth && window.numerousAuth.getWebSocketToken()) {
+            const token = window.numerousAuth.getWebSocketToken();
+            url += `?token=${encodeURIComponent(token)}`;
+        }
         
         // Create WebSocket
         this.ws = new WebSocket(url);

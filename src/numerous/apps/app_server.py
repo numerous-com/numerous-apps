@@ -25,6 +25,24 @@ from starlette.websockets import WebSocketDisconnect, WebSocketState
 
 from .builtins import ParentVisibility
 from .execution import _describe_widgets
+
+
+# Import auth components (lazy to avoid circular imports)
+def _get_auth_components() -> tuple[Any, ...]:
+    """Lazy import of auth components."""
+    from .auth.dependencies import get_user_context
+    from .auth.middleware import create_auth_middleware
+    from .auth.routes import admin_router, auth_router, create_login_page_route
+
+    return (
+        create_auth_middleware,
+        auth_router,
+        admin_router,
+        create_login_page_route,
+        get_user_context,
+    )
+
+
 from .models import (
     ActionRequestMessage,
     ActionResponseMessage,
@@ -108,6 +126,11 @@ class NumerousAppServerState:
     widgets: dict[str, AnyWidget] = field(default_factory=dict)
     allow_threaded: bool = False
     cleanup_task: asyncio.Task[None] | None = None
+    # Auth configuration
+    auth_enabled: bool = False
+    login_template: str | None = None
+    public_routes: list[str] = field(default_factory=list)
+    protected_routes: list[str] | None = None
 
 
 def wrap_html(key: str) -> str:
@@ -533,11 +556,68 @@ async def serve_main_js() -> Response:
     )
 
 
+def _setup_auth(
+    app: NumerousApp,
+    auth_provider: Any,
+    login_template: str | None = None,
+    public_routes: list[str] | None = None,
+    protected_routes: list[str] | None = None,
+) -> None:
+    """
+    Setup authentication for the app.
+
+    Args:
+        app: The NumerousApp instance
+        auth_provider: The authentication provider
+        login_template: Custom login template name (optional)
+        public_routes: Routes that don't require authentication
+        protected_routes: Routes that require authentication (None = all non-public)
+
+    """
+    (
+        create_auth_middleware,
+        auth_router,
+        admin_router,
+        create_login_page_route,
+        get_user_context,
+    ) = _get_auth_components()
+
+    # Store auth provider in app state
+    app.state.auth_provider = auth_provider
+
+    # Add auth middleware
+    middleware_class = create_auth_middleware(
+        auth_provider=auth_provider,
+        public_routes=public_routes,
+        protected_routes=protected_routes,
+        login_path="/login",
+    )
+    app.add_middleware(middleware_class)
+
+    # Add auth API routes
+    app.include_router(auth_router)
+
+    # Add admin routes if provider supports user management
+    if hasattr(auth_provider, "list_users"):
+        app.include_router(admin_router)
+
+    # Add login page route
+    login_page_handler = create_login_page_route(templates, login_template)
+    app.add_api_route("/login", login_page_handler, methods=["GET"])
+
+    logger.info("Authentication enabled")
+
+
 def create_app(  # noqa: PLR0912, C901
     template: str,
     dev: bool = False,
     widgets: dict[str, AnyWidget] | None = None,
     app_generator: Callable[[], dict[str, AnyWidget]] | None = None,
+    # Authentication configuration
+    auth_provider: Any | None = None,
+    login_template: str | None = None,
+    public_routes: list[str] | None = None,
+    protected_routes: list[str] | None = None,
     **kwargs: dict[str, Any],
 ) -> NumerousApp:
     if widgets is None:
@@ -602,9 +682,20 @@ def create_app(  # noqa: PLR0912, C901
             template=template,
             internal_templates=templates,
             allow_threaded=allow_threaded,
+            # Auth configuration
+            auth_enabled=auth_provider is not None,
+            login_template=login_template,
+            public_routes=public_routes or [],
+            protected_routes=protected_routes,
         )
 
         _app.state.config = config
+
+        # Setup authentication if provider is configured
+        if auth_provider is not None:
+            _setup_auth(
+                _app, auth_provider, login_template, public_routes, protected_routes
+            )
 
     if widgets:
         # Sort so ParentVisibility widgets are first in the dict
@@ -740,7 +831,7 @@ async def set_trait_value(
 async def _handle_action_response(
     response_queue: asyncio.Queue,  # type: ignore[type-arg]
     request_id: str,  # noqa: ARG001
-) -> Any:  # noqa: ANN401
+) -> Any:
     """Handle the response from an action execution."""
     try:
         response = await asyncio.wait_for(response_queue.get(), timeout=10)
@@ -762,7 +853,7 @@ async def execute_widget_action(
     session_id: str,
     args: list[Any] | None = None,
     kwargs: dict[str, Any] | None = None,
-) -> Any:  # noqa: ANN401
+) -> Any:
     """Execute an action on a widget."""
     try:
         session = await _get_session(

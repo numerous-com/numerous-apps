@@ -24,6 +24,7 @@
 - **🧩 Component-Based** — Built on [anywidget](https://anywidget.dev/) for reusable, framework-agnostic components
 - **🚀 Quick Start** — Bootstrap a new app in seconds with the CLI
 - **📦 Lightweight** — Built on FastAPI, Uvicorn, and Jinja2
+- **🔐 Authentication** — Pluggable auth system with ENV or database providers
 
 ## 🚀 Quick Start
 
@@ -119,12 +120,48 @@ tabs = wi.Tabs(["Tab 1", "Tab 2", "Tab 3"])
 # ... and more
 ```
 
+## 🔐 Authentication
+
+Protect your apps with built-in authentication. Bootstrap with auth enabled:
+
+```bash
+# Environment variable-based auth (simple)
+numerous-bootstrap my_app --with-auth
+
+# Database-based auth (SQLite)
+numerous-bootstrap my_app --with-db-auth
+```
+
+Or add authentication to an existing app:
+
+```python
+from numerous.apps import create_app
+from numerous.apps.auth.providers.env_auth import EnvAuthProvider
+
+auth_provider = EnvAuthProvider()
+app = create_app(
+    template="index.html.j2",
+    app_generator=run_app,
+    auth_provider=auth_provider,
+)
+```
+
+Configure users via environment variables:
+
+```bash
+export NUMEROUS_JWT_SECRET="your-secret-key"
+export NUMEROUS_AUTH_USERS='[{"username": "admin", "password": "admin123", "is_admin": true}]'
+```
+
+See [Authentication Documentation](docs/README.md#authentication) for full details including database auth, custom providers, and security best practices.
+
 ## 📚 Documentation
 
 For detailed documentation, visit the [docs](docs/README.md) or check out:
 
 - [Building from Scratch](docs/README.md#building-your-app-from-scratch) — Step-by-step guide
 - [Widget Reference](docs/README.md#widgets) — Available widgets and customization
+- [Authentication](docs/README.md#authentication) — Protect your apps with user login
 - [How It Works](docs/README.md#how-it-works) — Architecture overview
 
 ## 🤝 Contributing

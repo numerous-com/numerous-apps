@@ -16,7 +16,8 @@ dependencies = [
     "jinja2==3.1.4",
     "anywidget==0.9.13",
     "numpy>=2.0.0",
-    "pydantic==2.10.3"
+    "pydantic==2.10.3",
+    "PyJWT>=2.8.0",
 ]
 
 readme = "docs/README.md"
@@ -28,6 +29,14 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+# Authentication with database backend
+auth-db = [
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.29.0",
+    "aiosqlite>=0.19.0",
+    "bcrypt>=4.1.0",
+]
+
 dev = [
     "anywidget[dev]==0.9.13",
     "python-dotenv==1.0.1",
@@ -104,6 +113,7 @@ namespaces = true
     "bootstrap_app/static/*",
     "bootstrap_app/static/css/*",
     "bootstrap_app/widgets/*",
+    "auth/**/*.py",
 ]
 
 [project.scripts]
@@ -147,6 +157,21 @@ mark-parentheses = false
 
 [tool.ruff.lint.extend-per-file-ignores]
 "tests/**" = ["INP001", "S101", "D100", "D103"]
+# FastAPI patterns require Depends() in defaults and Any for protocol-based providers
+# TID252: Relative imports are preferred within packages
+# ARG001: Unused args used for dependency injection
+# BLE001: Broad exception catches are needed for token validation
+# D401: Docstring imperative mood not always applicable
+# E402: Lazy imports are needed to avoid circular imports
+# N802: Property names match class names
+# SIM103, TRY300: Simplification suggestions not always better for readability
+# S110: Silent exception passes for optional auth
+# ANN204: __init__ return type annotation not needed
+"src/numerous/apps/auth/**" = [
+    "ANN204", "ANN401", "ARG001", "B008", "BLE001", "D401", "E402",
+    "N802", "S110", "SIM103", "TID252", "TRY300"
+]
+"src/numerous/apps/app_server.py" = ["ANN401", "D401", "E402"]
 
 [tool.mypy]
 ignore_missing_imports = true

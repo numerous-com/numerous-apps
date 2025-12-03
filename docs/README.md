@@ -42,7 +42,7 @@ Our framework emphasizes modularity, allowing for easy separation of concerns. W
 
 ---
 
-## Planned Features
+## Features
 
 ### **Simple Yet Powerful**
 - **Intuitive Syntax:** Develop reactive web apps using standard Python and HTML.
@@ -63,6 +63,12 @@ Our framework emphasizes modularity, allowing for easy separation of concerns. W
 - **Multi-Client Ready:** Designed to scale and handle multiple clients simultaneously, with support for distributed app instances.
 - **AI Integration:** Seamless integration with AI agents and models.
 - **Developer-Friendly:** Compatible with your favorite IDE and development tools—no special IDE or notebook needed.
+
+### **Secure by Design**
+- **Pluggable Authentication:** Built-in support for user authentication with multiple providers.
+- **JWT Tokens:** Secure session management with access and refresh tokens.
+- **Role-Based Access:** Support for user roles and admin privileges.
+- **Custom Providers:** Easily extend with your own authentication backend.
 
 ## Getting Started
 
@@ -87,6 +93,23 @@ numerous-bootstrap my_app
 This command creates a new directory called `my_app` with the basic structure of a Numerous App. It initializes the necessary files and folders, installs dependencies, and starts the app server (`uvicorn`). You can access the app at [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 Try out the app and start making changes to the code.
+
+#### Bootstrap Options
+
+| Option | Description |
+|--------|-------------|
+| `--with-auth` | Enable environment variable-based authentication |
+| `--with-db-auth` | Enable database-based authentication (SQLite) |
+| `--skip-deps` | Skip installing dependencies |
+| `--run-skip` | Skip running the app after creation |
+| `--port PORT` | Specify the port (default: 8000) |
+| `--host HOST` | Specify the host (default: 127.0.0.1) |
+
+Example with authentication:
+
+```bash
+numerous-bootstrap my_secure_app --with-auth
+```
 
 ## App File Structure
 
@@ -255,6 +278,238 @@ pre-commit install --hook-type pre-commit --hook-type pre-push
 ```
 
 This ensures that all tests pass before code is pushed to the repository.
+
+## Authentication
+
+Numerous Apps includes a pluggable authentication system that allows you to protect your apps with user authentication. The framework supports multiple authentication providers out of the box and allows you to create custom providers.
+
+### Quick Start with Authentication
+
+Bootstrap an app with authentication enabled:
+
+```bash
+# Environment variable-based authentication (simple, good for development)
+numerous-bootstrap my_app --with-auth
+
+# Database-based authentication (SQLite, good for production)
+numerous-bootstrap my_app --with-db-auth
+```
+
+### Authentication Providers
+
+#### 1. Environment Variable Authentication (`EnvAuthProvider`)
+
+Simple authentication using environment variables. Perfect for development or single-user deployments.
+
+**Setup:**
+
+```python
+from numerous.apps import create_app
+from numerous.apps.auth.providers.env_auth import EnvAuthProvider
+
+auth_provider = EnvAuthProvider()
+
+app = create_app(
+    template="index.html.j2",
+    dev=True,
+    app_generator=run_app,
+    auth_provider=auth_provider,
+)
+```
+
+**Configuration (environment variables):**
+
+```bash
+# JWT secret for token signing (required for production)
+export NUMEROUS_JWT_SECRET="your-secure-secret-key"
+
+# Users configuration (JSON array)
+export NUMEROUS_AUTH_USERS='[
+  {"username": "admin", "password": "admin123", "is_admin": true},
+  {"username": "user", "password": "userpass123", "roles": ["viewer"]}
+]'
+```
+
+**User configuration options:**
+- `username` (required): The login username
+- `password` (required): The login password
+- `is_admin` (optional): Whether the user has admin privileges
+- `roles` (optional): Array of role names for role-based access control
+- `email` (optional): User's email address
+
+#### 2. Database Authentication (`DatabaseAuthProvider`)
+
+Full-featured authentication with database storage. Supports PostgreSQL (production) and SQLite (development).
+
+**Installation:**
+
+```bash
+pip install numerous-apps[auth-db]
+```
+
+**Setup with SQLite (development):**
+
+```python
+from numerous.apps import create_app
+from numerous.apps.auth.providers.database_auth import DatabaseAuthProvider
+
+auth_provider = DatabaseAuthProvider(
+    database_url="sqlite+aiosqlite:///./app_auth.db",
+    jwt_secret="your-secure-secret-key",
+)
+
+app = create_app(
+    template="index.html.j2",
+    dev=True,
+    app_generator=run_app,
+    auth_provider=auth_provider,
+)
+```
+
+**Setup with PostgreSQL (production):**
+
+```python
+auth_provider = DatabaseAuthProvider(
+    database_url="postgresql+asyncpg://user:password@localhost/mydb",
+    jwt_secret="your-secure-secret-key",
+)
+```
+
+**Creating users programmatically:**
+
+```python
+from numerous.apps.auth.models import CreateUserRequest
+
+# Create a user
+await auth_provider.create_user(CreateUserRequest(
+    username="newuser",
+    password="securepassword123",
+    email="user@example.com",
+    roles=["editor"],
+    is_admin=False,
+))
+```
+
+### Authentication Flow
+
+1. **Unauthenticated Access**: Users accessing protected routes are redirected to `/login`
+2. **Login**: Users submit credentials via the login form
+3. **Token Generation**: On successful auth, the server returns:
+   - Access token (short-lived, stored in cookie)
+   - Refresh token (long-lived, httpOnly cookie)
+4. **Authenticated Requests**: Browser automatically sends tokens with requests
+5. **Token Refresh**: Access tokens are automatically refreshed using the refresh token
+6. **Logout**: Tokens are revoked and cookies cleared
+
+### Configuring Protected Routes
+
+By default, all routes except `/login` and auth API endpoints are protected. You can customize this:
+
+```python
+app = create_app(
+    template="index.html.j2",
+    auth_provider=auth_provider,
+    # Routes that don't require authentication
+    public_routes=["/public", "/api/public/*"],
+    # Only protect specific routes (None = protect all non-public)
+    protected_routes=None,
+)
+```
+
+### Accessing User Information
+
+#### In Python (server-side)
+
+Use FastAPI dependencies to access the current user:
+
+```python
+from fastapi import Depends
+from numerous.apps.auth.dependencies import CurrentUser, OptionalUser
+
+@app.get("/api/profile")
+async def get_profile(user: CurrentUser):
+    return {"username": user.username, "roles": user.roles}
+
+@app.get("/api/data")
+async def get_data(user: OptionalUser):
+    if user:
+        return {"data": "authenticated data"}
+    return {"data": "public data"}
+```
+
+#### In JavaScript (client-side)
+
+The auth state is available via `window.numerousAuth`:
+
+```javascript
+// Check if authenticated
+if (window.numerousAuth && window.numerousAuth.isAuthenticated()) {
+    const user = window.numerousAuth.getUserContext();
+    console.log(`Logged in as: ${user.username}`);
+    console.log(`Is admin: ${user.is_admin}`);
+    console.log(`Roles: ${user.roles.join(', ')}`);
+}
+
+// Logout
+window.numerousAuth.logout();
+```
+
+### Custom Login Page
+
+You can provide a custom login template:
+
+```python
+app = create_app(
+    template="index.html.j2",
+    auth_provider=auth_provider,
+    login_template="my_custom_login.html.j2",
+)
+```
+
+Your custom template should include a form that POSTs to `/api/auth/login` with `username` and `password` fields.
+
+### Creating a Custom Auth Provider
+
+Implement the `AuthProvider` protocol to create custom authentication:
+
+```python
+from numerous.apps.auth.base import BaseAuthProvider
+from numerous.apps.auth.models import AuthResult, User
+
+class MyCustomAuthProvider(BaseAuthProvider):
+    async def authenticate(self, username: str, password: str) -> AuthResult:
+        # Your authentication logic
+        user = await self._verify_credentials(username, password)
+        if user:
+            return AuthResult.ok(user)
+        return AuthResult.fail("Invalid credentials")
+    
+    async def get_user(self, user_id: str) -> User | None:
+        # Retrieve user by ID
+        return await self._fetch_user(user_id)
+    
+    async def get_user_by_username(self, username: str) -> User | None:
+        # Retrieve user by username
+        return await self._fetch_user_by_username(username)
+```
+
+### Security Considerations
+
+1. **JWT Secret**: Always use a strong, unique secret in production
+   ```bash
+   # Generate a secure secret
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+
+2. **HTTPS**: In production, always use HTTPS. Set `secure=True` for cookies.
+
+3. **Password Requirements**: The `CreateUserRequest` model enforces minimum 8-character passwords.
+
+4. **Token Expiry**: Default settings:
+   - Access tokens: 15 minutes
+   - Refresh tokens: 7 days
+
+5. **Rate Limiting**: Consider adding rate limiting to the login endpoint in production.
 
 ## How It Works
 
