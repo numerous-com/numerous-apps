@@ -10,11 +10,103 @@ from pathlib import Path
 
 import httpx
 import psutil
+from playwright.sync_api import sync_playwright, expect
 
 
 # Setup logging
 logger = logging.getLogger("End to End Test Logger")
 logging.basicConfig(level=logging.INFO)
+
+
+def run_browser_tests(host: str, port: int) -> None:
+    """Run Playwright browser tests to verify UI functionality."""
+    logger.info("Starting Playwright browser tests")
+    base_url = f"http://{host}:{port}"
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+
+        try:
+            # Test 1: Page loads with correct title
+            logger.info("Test: Page loads with correct title")
+            page.goto(base_url)
+            expect(page).to_have_title("Numerous Demo App")
+            logger.info("✓ Page title is correct")
+
+            # Test 2: Logo is visible
+            logger.info("Test: Logo is visible")
+            logo = page.locator("img[alt='Numerous Logo']")
+            expect(logo).to_be_visible()
+            logger.info("✓ Logo is visible")
+
+            # Test 3: Tabs are present
+            logger.info("Test: Tabs are present")
+            # Wait for the app to fully load
+            page.wait_for_timeout(2000)
+            tabs_container = page.locator(".main-content")
+            expect(tabs_container).to_be_visible()
+            logger.info("✓ Main content is visible")
+
+            # Test 4: Counter widget shows initial value
+            logger.info("Test: Counter widget displays")
+            # Look for the counter label
+            counter_label = page.get_by_text("Counter:")
+            expect(counter_label).to_be_visible()
+            logger.info("✓ Counter widget is visible")
+
+            # Test 5: Click increment button and verify counter increases
+            logger.info("Test: Increment button functionality")
+            # Find and click the increment button
+            increment_button = page.get_by_role("button", name="Increment Counter")
+            expect(increment_button).to_be_visible()
+
+            # Get initial counter value - look for input with the counter value
+            counter_input = page.locator("input[type='number']").first
+            initial_value = counter_input.input_value()
+            logger.info(f"Initial counter value: {initial_value}")
+
+            # Click the button
+            increment_button.click()
+            page.wait_for_timeout(500)  # Wait for update
+
+            # Verify counter increased
+            new_value = counter_input.input_value()
+            logger.info(f"New counter value: {new_value}")
+            assert int(new_value) == int(initial_value) + 1, (
+                f"Counter did not increment: {initial_value} -> {new_value}"
+            )
+            logger.info("✓ Counter incremented successfully")
+
+            # Test 6: Click increment again to verify it keeps working
+            logger.info("Test: Multiple increments work")
+            increment_button.click()
+            page.wait_for_timeout(500)
+            final_value = counter_input.input_value()
+            assert int(final_value) == int(new_value) + 1, (
+                f"Counter did not increment again: {new_value} -> {final_value}"
+            )
+            logger.info("✓ Multiple increments work correctly")
+
+            # Test 7: Dropdown is present and functional
+            logger.info("Test: Dropdown widget is present")
+            dropdown_label = page.get_by_text("Select Value")
+            expect(dropdown_label).to_be_visible()
+            logger.info("✓ Dropdown widget is visible")
+
+            # Test 8: Footer is present
+            logger.info("Test: Footer is present")
+            footer = page.locator("footer")
+            expect(footer).to_be_visible()
+            expect(footer).to_contain_text("Numerous ApS")
+            logger.info("✓ Footer is visible with correct text")
+
+            logger.info("All Playwright browser tests passed!")
+
+        finally:
+            context.close()
+            browser.close()
 
 
 def create_venv(tmp_path: Path) -> Path:
@@ -167,6 +259,9 @@ def test_numerous_bootstrap_integration(tmp_path: Path) -> None:
             # assert "widgets" in widgets_response.json()
             logger.info("Widgets endpoint responded with status code 200")
             logger.info(f"Response: {widgets_response}")
+
+        # Run Playwright browser tests
+        run_browser_tests(host, port)
 
     finally:
         logger.info(f"Terminating server on {host}:{port}")
