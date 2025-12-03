@@ -2,6 +2,13 @@
 
 
 
+## v0.4.3 (2025-12-03)
+
+### Fix
+
+* fix(docs): move testing docs to CONTRIBUTING.md and add user-oriented README ([`2c3ca05`](https://github.com/numerous-com/numerous-apps/commit/2c3ca0502fa44a553ab31b25face50bac7081103))
+
+
 ## v0.4.2 (2025-12-03)
 
 ### Fix
