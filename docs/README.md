@@ -100,6 +100,7 @@ Try out the app and start making changes to the code.
 |--------|-------------|
 | `--with-auth` | Enable environment variable-based authentication |
 | `--with-db-auth` | Enable database-based authentication (SQLite) |
+| `--export-templates` | Export internal templates (login, error pages, etc.) for customization |
 | `--skip-deps` | Skip installing dependencies |
 | `--run-skip` | Skip running the app after creation |
 | `--port PORT` | Specify the port (default: 8000) |
@@ -110,6 +111,14 @@ Example with authentication:
 ```bash
 numerous-bootstrap my_secure_app --with-auth
 ```
+
+Example with template customization:
+
+```bash
+numerous-bootstrap my_app --export-templates
+```
+
+This exports internal templates (login page, error pages, splash screen) and CSS files to your project, allowing full customization of the framework's built-in UI components.
 
 ## App File Structure
 
@@ -510,6 +519,210 @@ class MyCustomAuthProvider(BaseAuthProvider):
    - Refresh tokens: 7 days
 
 5. **Rate Limiting**: Consider adding rate limiting to the login endpoint in production.
+
+## Template Customization
+
+The framework uses internal templates for login pages, error screens, splash screens, and other UI elements. You can export and customize these templates to match your application's branding.
+
+### Exporting Templates
+
+Use the `--export-templates` flag when bootstrapping:
+
+```bash
+numerous-bootstrap my_app --export-templates
+```
+
+Or export templates to an existing project:
+
+```bash
+numerous-bootstrap existing_app --export-templates --skip-deps --run-skip
+```
+
+### Exported Files
+
+The following files are exported to your project:
+
+| Directory | Files | Purpose |
+|-----------|-------|---------|
+| `templates/` | `login.html.j2` | Login page template |
+| `templates/` | `error.html.j2` | Error page template |
+| `templates/` | `error_modal.html.j2` | Error modal template |
+| `templates/` | `splash_screen.html.j2` | Loading splash screen |
+| `templates/` | `session_lost_banner.html.j2` | Session disconnection banner |
+| `static/css/` | `numerous-base.css` | Base CSS styles for all templates |
+
+### Customization Tips
+
+1. **Maintain Template Variables**: Keep the existing Jinja2 variables (like `{{ error_message }}`) as the framework passes these values.
+
+2. **CSS Variables**: The `numerous-base.css` uses CSS custom properties for easy theming:
+   ```css
+   :root {
+       --numerous-primary: #4f46e5;
+       --numerous-background: #f8fafc;
+       /* ... */
+   }
+   ```
+
+3. **Partial Customization**: You only need to export the templates you want to customize. The framework will use its internal versions for any missing templates.
+
+## Multi-App Support
+
+Numerous Apps supports combining multiple applications into a single server. This is useful for:
+
+- Deploying multiple related apps under one domain
+- Separating public and authenticated areas
+- Sharing resources (static files, themes, authentication) across apps
+
+### Basic Multi-App Setup
+
+```python
+from numerous.apps import create_app, combine_apps
+
+# Create individual apps with path prefixes
+app1 = create_app(
+    template="app1/index.html.j2",
+    path_prefix="/app1",
+    app_generator=run_app1,
+)
+
+app2 = create_app(
+    template="app2/index.html.j2",
+    path_prefix="/app2",
+    app_generator=run_app2,
+)
+
+# Combine into a single server
+main_app = combine_apps(
+    apps={"/app1": app1, "/app2": app2},
+    root_redirect="/app1",  # Redirect "/" to "/app1"
+    title="My Multi-App Server",
+)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(main_app, host="127.0.0.1", port=8000)
+```
+
+### Path Prefix Configuration
+
+When creating apps for multi-app deployment, always specify the `path_prefix` parameter:
+
+```python
+app = create_app(
+    template="index.html.j2",
+    path_prefix="/myapp",  # Must match the key in combine_apps
+    app_generator=run_app,
+)
+```
+
+### Mixed Authentication
+
+Apps can have different authentication requirements:
+
+```python
+from numerous.apps import create_app, combine_apps
+from numerous.apps.auth.providers.database_auth import DatabaseAuthProvider
+
+# Public app - no authentication
+public_app = create_app(
+    template="public/index.html.j2",
+    path_prefix="/public",
+    app_generator=run_public_app,
+)
+
+# Admin app - requires authentication
+auth_provider = DatabaseAuthProvider(
+    database_url="sqlite+aiosqlite:///./auth.db",
+    jwt_secret="your-secret-key",
+)
+
+admin_app = create_app(
+    template="admin/index.html.j2",
+    path_prefix="/admin",
+    app_generator=run_admin_app,
+    auth_provider=auth_provider,
+)
+
+# Combine apps
+main_app = combine_apps(
+    apps={
+        "/public": public_app,
+        "/admin": admin_app,
+    },
+    root_redirect="/public",
+)
+```
+
+### Shared Static Files
+
+Share static files across all apps:
+
+```python
+main_app = combine_apps(
+    apps={"/app1": app1, "/app2": app2},
+    shared_static_dir="./shared_static",  # Mounted at /shared-static/
+)
+```
+
+Access shared files in templates:
+```html
+<link href="/shared-static/css/theme.css" rel="stylesheet">
+```
+
+### Shared Theme CSS
+
+Provide a shared CSS theme as a string:
+
+```python
+theme_css = """
+:root {
+    --primary-color: #4f46e5;
+    --background-color: #f8fafc;
+}
+"""
+
+main_app = combine_apps(
+    apps={"/app1": app1, "/app2": app2},
+    shared_theme_css=theme_css,  # Available at /shared-static/css/theme.css
+)
+```
+
+### Shared Authentication
+
+Use a single authentication provider across all apps:
+
+```python
+shared_auth = DatabaseAuthProvider(
+    database_url="sqlite+aiosqlite:///./shared_auth.db",
+    jwt_secret="shared-secret-key",
+)
+
+main_app = combine_apps(
+    apps={"/app1": app1, "/app2": app2},
+    shared_auth_provider=shared_auth,
+)
+```
+
+### combine_apps Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `apps` | `dict[str, NumerousApp]` | Dictionary mapping path prefixes to app instances |
+| `shared_static_dir` | `Path \| str \| None` | Path to shared static files directory |
+| `shared_theme_css` | `str \| None` | CSS string for shared theme |
+| `root_redirect` | `str \| None` | Path to redirect "/" to (e.g., "/app1") |
+| `shared_auth_provider` | `AuthProvider \| None` | Shared authentication provider |
+| `title` | `str` | Title for the combined application |
+
+### Health Check Endpoint
+
+Combined apps automatically include a health check endpoint at `/health`:
+
+```bash
+curl http://localhost:8000/health
+# {"status": "healthy", "apps": "['/app1', '/app2']"}
+```
 
 ## How It Works
 

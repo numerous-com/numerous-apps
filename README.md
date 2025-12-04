@@ -25,6 +25,7 @@
 - **🚀 Quick Start** — Bootstrap a new app in seconds with the CLI
 - **📦 Lightweight** — Built on FastAPI, Uvicorn, and Jinja2
 - **🔐 Authentication** — Pluggable auth system with ENV or database providers
+- **🏗️ Multi-App Support** — Combine multiple apps into a single server with shared resources
 
 ## 🚀 Quick Start
 
@@ -130,6 +131,9 @@ numerous-bootstrap my_app --with-auth
 
 # Database-based auth (SQLite)
 numerous-bootstrap my_app --with-db-auth
+
+# Export internal templates for customization
+numerous-bootstrap my_app --export-templates
 ```
 
 Or add authentication to an existing app:
@@ -155,6 +159,40 @@ export NUMEROUS_AUTH_USERS='[{"username": "admin", "password": "admin123", "is_a
 
 See [Authentication Documentation](docs/README.md#authentication) for full details including database auth, custom providers, and security best practices.
 
+## 🏗️ Multi-App Support
+
+Deploy multiple apps on a single server, each with its own authentication and configuration:
+
+```python
+from numerous.apps import create_app, combine_apps
+
+# Create individual apps with path prefixes
+public_app = create_app(
+    template="public/index.html.j2",
+    path_prefix="/public",
+    app_generator=run_public_app,
+)
+
+admin_app = create_app(
+    template="admin/index.html.j2",
+    path_prefix="/admin",
+    app_generator=run_admin_app,
+    auth_provider=auth_provider,
+)
+
+# Combine into a single server
+main_app = combine_apps(
+    apps={"/public": public_app, "/admin": admin_app},
+    root_redirect="/public",
+)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(main_app, host="127.0.0.1", port=8000)
+```
+
+See [Multi-App Documentation](docs/README.md#multi-app-support) for details on shared authentication, static files, and themes.
+
 ## 📚 Documentation
 
 For detailed documentation, visit the [docs](docs/README.md) or check out:
@@ -162,6 +200,8 @@ For detailed documentation, visit the [docs](docs/README.md) or check out:
 - [Building from Scratch](docs/README.md#building-your-app-from-scratch) — Step-by-step guide
 - [Widget Reference](docs/README.md#widgets) — Available widgets and customization
 - [Authentication](docs/README.md#authentication) — Protect your apps with user login
+- [Multi-App Support](docs/README.md#multi-app-support) — Combine multiple apps into one server
+- [Template Customization](docs/README.md#template-customization) — Customize login pages, error screens, and more
 - [How It Works](docs/README.md#how-it-works) — Architecture overview
 
 ## 🤝 Contributing
