@@ -2,6 +2,36 @@
 
 
 
+## v0.6.0 (2025-12-04)
+
+### Feature
+
+* feat(bootstrap): add --export-templates option to export internal templates
+
+Add new --export-templates CLI flag to numerous-bootstrap command that
+copies internal Jinja2 templates and CSS files to the app directory:
+
+- login.html.j2, error.html.j2, error_modal.html.j2
+- splash_screen.html.j2, session_lost_banner.html.j2
+- app_process_error.html.j2, numerous-base.css
+
+This allows app developers to customize these templates for their needs.
+Existing files are not overwritten to preserve customizations.
+
+Includes pytest tests and e2e tests for the new functionality. ([`7f01fce`](https://github.com/numerous-com/numerous-apps/commit/7f01fce241a865b23cb927185a06f483ed4d618b))
+
+* feat(multi-app): add support for combining multiple apps into single server
+
+- Add combine_apps() function to mount multiple NumerousApp instances at different paths
+- Add path_prefix and base_dir parameters to create_app() for multi-app deployments
+- Create app_factory.py with factory pattern for creating fresh app instances
+- Export combine_apps from numerous.apps module
+- Add base_path parameter to auth routes for multi-app login pages
+- Update numerous.js to use dynamic base paths for API endpoints and WebSocket
+- Add numerous-base.css with CSS custom properties for consistent theming
+- Update pyproject.toml to include new CSS files in package data ([`99a7cea`](https://github.com/numerous-com/numerous-apps/commit/99a7ceaf65463af6acc963012068200b8ca6254f))
+
+
 ## v0.5.0 (2025-12-03)
 
 ### Feature
