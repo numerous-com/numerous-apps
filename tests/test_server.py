@@ -16,11 +16,10 @@ from numerous.apps.server import (
     AppInitError,
     _app_process,
     _create_handler,
-    _get_session,
     _load_main_js,
-    global_session_manager,
 )
-from numerous.apps.session_management import SessionId
+from numerous.apps.app_factory import _get_app_session
+from numerous.apps.session_management import SessionId, GlobalSessionManager
 
 
 class MockCommunicationChannel:
@@ -76,93 +75,86 @@ class MockExecutionManager:
 
 @pytest.mark.asyncio
 async def test_get_session_creates_new_session() -> None:
-    """Test that _get_session creates a new session when it doesn't exist."""
+    """Test that per-app session creation works (no global manager)."""
     session_id = ""  # Empty session ID to trigger new session creation
+    session_manager = GlobalSessionManager()
 
     with patch(
-        "numerous.apps.server.MultiProcessExecutionManager",
+        "numerous.apps.communication.MultiProcessExecutionManager",
         return_value=MockExecutionManager(),
     ):
-        try:
-            session = await asyncio.wait_for(
-                _get_session(
-                    allow_threaded=False,
-                    session_id=session_id,
-                    base_dir=".",
-                    module_path="test.py",
-                    template="",
-                ),
-                timeout=1.0
-            )
-            assert global_session_manager.has_session(SessionId(session.session_id))
-        finally:
-            # Cleanup any sessions created during the test
-            for sid in list(global_session_manager._sessions.keys()):
-                await global_session_manager.remove_session(sid)
+        session = await asyncio.wait_for(
+            _get_app_session(
+                session_manager=session_manager,
+                allow_threaded=False,
+                session_id=session_id,
+                base_dir=".",
+                module_path="test.py",
+                template="",
+            ),
+            timeout=1.0,
+        )
+        assert session_manager.has_session(SessionId(session.session_id))
 
 
 @pytest.mark.asyncio
 async def test_get_session_loads_config() -> None:
-    """Test that _get_session loads configuration when requested."""
+    """Test that session creation loads configuration with per-app manager."""
     session_id = ""
     mock_manager = MockExecutionManager()
-    
+    session_manager = GlobalSessionManager()
+
     # Put the init-config message in the queue
-    mock_manager.from_app_instance.put_message({
-        "type": "init-config",
-        "widget_configs": {"widget1": {"defaults": "{}"}},
-    })
+    mock_manager.from_app_instance.put_message(
+        {
+            "type": "init-config",
+            "widget_configs": {"widget1": {"defaults": "{}"}},
+        }
+    )
 
     with patch(
-        "numerous.apps.server.MultiProcessExecutionManager", return_value=mock_manager
+        "numerous.apps.communication.MultiProcessExecutionManager", return_value=mock_manager
     ):
-        try:
-            session = await asyncio.wait_for(
-                _get_session(
-                    allow_threaded=False,
-                    session_id=session_id,
-                    base_dir=".",
-                    module_path="test.py",
-                    template="",
-                ),
-                timeout=1.0
-            )
-            assert session is not None
-        finally:
-            # Cleanup any sessions created during the test
-            for sid in list(global_session_manager._sessions.keys()):
-                await global_session_manager.remove_session(sid)
+        session = await asyncio.wait_for(
+            _get_app_session(
+                session_manager=session_manager,
+                allow_threaded=False,
+                session_id=session_id,
+                base_dir=".",
+                module_path="test.py",
+                template="",
+            ),
+            timeout=1.0,
+        )
+        assert session is not None
 
 
 @pytest.mark.asyncio
 async def test_get_session_with_threaded_execution() -> None:
-    """Test that _get_session creates ThreadedExecutionManager when requested."""
+    """Test that threaded execution manager is used when requested."""
     session_id = ""
+    session_manager = GlobalSessionManager()
 
-    with patch("numerous.apps.server.ThreadedExecutionManager") as mock_threaded:
+    with patch("numerous.apps.communication.ThreadedExecutionManager") as mock_threaded:
         mock_manager = MockExecutionManager()
         mock_threaded.return_value = mock_manager
 
-        try:
-            session = await asyncio.wait_for(
-                _get_session(
-                    allow_threaded=True,
-                    session_id=session_id,
-                    base_dir=".",
-                    module_path="test.py",
-                    template="",
-                ),
-                timeout=1.0
-            )
-            
-            # Verify ThreadedExecutionManager was used
-            mock_threaded.assert_called_once()
-            assert mock_manager.started
-            assert session is not None
-        finally:
-            # Cleanup any sessions created during the test
-            for sid in list(global_session_manager._sessions.keys()):
-                await global_session_manager.remove_session(sid)
+        session = await asyncio.wait_for(
+            _get_app_session(
+                session_manager=session_manager,
+                allow_threaded=True,
+                session_id=session_id,
+                base_dir=".",
+                module_path="test.py",
+                template="",
+            ),
+            timeout=1.0,
+        )
+
+        # Verify ThreadedExecutionManager was used
+        mock_threaded.assert_called_once()
+        assert mock_manager.started
+        assert session is not None
 
 
 def test_app_process_loads_module() -> None:

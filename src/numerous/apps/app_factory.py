@@ -18,6 +18,8 @@ from fastapi import HTTPException, Request, WebSocket
 
 if TYPE_CHECKING:
     from anywidget import AnyWidget
+
+    from .session_management import GlobalSessionManager
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -47,7 +49,6 @@ from .models import (
 )
 from .server import (
     NumerousApp,
-    _get_session,
     _get_template,
     _load_main_js,
 )
@@ -102,6 +103,57 @@ class NumerousAppServerState:
     # Theme configuration
     theme_css: str | None = None
     shared_theme_available: bool = False
+    # Per-app session manager (factory-only)
+    session_manager: GlobalSessionManager | None = None
+
+
+async def _get_app_session(
+    session_manager: GlobalSessionManager,
+    allow_threaded: bool,
+    session_id: str,
+    base_dir: str,
+    module_path: str,
+    template: str,
+    app_id: str,
+    allow_create: bool = True,
+) -> SessionManager:
+    """Get or create a session using the provided per-app session manager."""
+    import uuid
+
+    from .communication import MultiProcessExecutionManager, ThreadedExecutionManager
+    from .server import _app_process
+    from .session_management import SessionId
+
+    # Generate a session ID if one doesn't exist
+    if session_id in ["", "null", "undefined"] or (
+        not session_manager.has_session(SessionId(session_id))
+    ):
+        if not allow_create:
+            raise ValueError("Session ID not found.")
+        session_id = str(uuid.uuid4())
+
+        if allow_threaded:
+            execution_manager: MultiProcessExecutionManager | ThreadedExecutionManager
+            execution_manager = ThreadedExecutionManager(
+                target=_app_process,  # type: ignore[arg-type]
+                session_id=session_id,
+            )
+        else:
+            execution_manager = MultiProcessExecutionManager(
+                target=_app_process,  # type: ignore[arg-type]
+                session_id=session_id,
+            )
+        execution_manager.start(str(base_dir), module_path, template, app_id)
+
+        # Create session in this app's session manager
+        session_manager_inst = session_manager.create_session(
+            SessionId(session_id), execution_manager
+        )
+        logger.info(f"Creating new session {session_id}.")
+    else:
+        session_manager_inst = session_manager.get_session(SessionId(session_id))
+
+    return session_manager_inst
 
 
 def _wrap_html(key: str) -> str:
@@ -157,11 +209,20 @@ def create_numerous_app(
     if widgets is None:
         widgets = {}
 
-    # Configure templates
-    templates = Jinja2Templates(
-        directory=[str(base_dir / "templates"), str(PACKAGE_DIR / "templates")]
-    )
+    # Configure templates. Check multiple locations: base_dir, base_dir/templates/,
+    # and package templates.
+    template_dirs = [
+        str(base_dir),  # Check base_dir first for templates in app root
+        str(base_dir / "templates"),  # Then base_dir/templates/
+        str(PACKAGE_DIR / "templates"),  # Finally package templates
+    ]
+    templates = Jinja2Templates(directory=template_dirs)
     templates.env.autoescape = False
+
+    # Create a per-app session manager for multi-app isolation
+    from .session_management import GlobalSessionManager
+
+    app_session_manager = GlobalSessionManager()
 
     # Create app state configuration
     config = NumerousAppServerState(
@@ -171,6 +232,7 @@ def create_numerous_app(
         base_dir=str(base_dir),
         module_path=module_path,
         template=template,
+        session_manager=app_session_manager,
         internal_templates=templates,
         path_prefix=path_prefix,
         app_id=app_id,
@@ -365,9 +427,10 @@ async def _render_home(
     # Inject base path for JavaScript
     base_path_script = f'<script>window.NUMEROUS_BASE_PATH = "{path_prefix}";</script>'
 
-    # Inject base CSS
+    # Inject base CSS - use path_prefix for multi-app deployments
     base_css_link = (
-        '<link rel="stylesheet" href="/numerous-static/css/numerous-base.css">'
+        f'<link rel="stylesheet" '
+        f'href="{path_prefix}/numerous-static/css/numerous-base.css">'
     )
 
     # Build modified HTML
@@ -378,7 +441,7 @@ async def _render_home(
     modified_html = modified_html.replace(
         "</body>",
         f"{splash_screen}{error_modal}{session_lost_banner}"
-        f'<script src="/numerous.js"></script></body>',
+        f'<script src="{path_prefix}/numerous.js"></script></body>',
     )
 
     return HTMLResponse(modified_html)
@@ -400,12 +463,14 @@ async def _handle_get_widgets(app: NumerousApp, request: Request) -> dict[str, A
     """Handle the get widgets API endpoint."""
     session_id = request.query_params.get("session_id")
     try:
-        session = await _get_session(
+        session = await _get_app_session(
+            app.state.config.session_manager,
             app.state.config.allow_threaded,
             session_id,
             app.state.config.base_dir,
             app.state.config.module_path,
             app.state.config.template,
+            app.state.config.app_id,
         )
         logger.debug(f"Session ID: {session_id}")
 
@@ -583,12 +648,14 @@ async def _handle_set_trait(
     session_id: str,
 ) -> TraitValue:
     """Handle setting a widget trait value."""
-    session_manager = await _get_session(
+    session_manager = await _get_app_session(
+        app.state.config.session_manager,
         app.state.config.allow_threaded,
         session_id,
         app.state.config.base_dir,
         app.state.config.module_path,
         app.state.config.template,
+        app.state.config.app_id,
         allow_create=False,
     )
 
@@ -629,12 +696,14 @@ async def _handle_widget_action(
 ) -> Any:  # noqa: ANN401
     """Handle executing a widget action."""
     try:
-        session = await _get_session(
+        session = await _get_app_session(
+            app.state.config.session_manager,
             app.state.config.allow_threaded,
             session_id,
             app.state.config.base_dir,
             app.state.config.module_path,
             app.state.config.template,
+            app.state.config.app_id,
             allow_create=False,
         )
     except Exception as e:
@@ -701,12 +770,14 @@ async def _handle_websocket(
             ):
                 logger.warning(f"Detected stale session {session_id}. Cleaning up.")
                 await _cleanup_session(app, session_id)
-                session_data = await _get_session(
+                session_data = await _get_app_session(
+                    app.state.config.session_manager,
                     app.state.config.allow_threaded,
                     session_id,
                     app.state.config.base_dir,
                     app.state.config.module_path,
                     app.state.config.template,
+                    app.state.config.app_id,
                 )
 
         _register_connection(app, session_id, client_id, websocket, session_data)
@@ -733,12 +804,14 @@ async def _get_session_or_error(
 ) -> SessionManager | None:
     """Get session data or send error if not found."""
     try:
-        return await _get_session(
+        return await _get_app_session(
+            session_manager=app.state.config.session_manager,
             allow_threaded=app.state.config.allow_threaded,
             session_id=session_id,
             base_dir=app.state.config.base_dir,
             module_path=app.state.config.module_path,
             template=app.state.config.template,
+            app_id=app.state.config.app_id,
             allow_create=False,
         )
     except ValueError as e:
@@ -1128,11 +1201,15 @@ def _setup_auth(
 
     app.state.auth_provider = auth_provider
 
+    # Use full path for login redirect when app is mounted at a sub-path
+    login_path = f"{base_path}/login" if base_path else "/login"
+
     middleware_class = create_auth_middleware(
         auth_provider=auth_provider,
         public_routes=public_routes,
         protected_routes=protected_routes,
-        login_path="/login",
+        login_path=login_path,
+        base_path=base_path,
     )
     app.add_middleware(middleware_class)
 

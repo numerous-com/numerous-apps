@@ -102,8 +102,22 @@ def combine_apps(
 
         logger.info("Registered shared theme CSS endpoint")
 
+    # Add health check endpoint BEFORE mounting apps
+    # This prevents a root-mounted app from catching the health check
+    @main_app.get("/health")  # type: ignore[misc]
+    async def health_check() -> dict[str, str]:
+        return {"status": "healthy", "apps": str(list(apps.keys()))}
+
     # Configure each app with shared settings and mount
-    for path, app in apps.items():
+    # Sort apps by path length (descending) so more specific paths are mounted first.
+    # This prevents a root mount ("/") from catching all requests before other mounts.
+    sorted_apps = sorted(
+        apps.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+
+    for path, app in sorted_apps:
         # Normalize path to ensure it starts with /
         normalized_path = path if path.startswith("/") else f"/{path}"
 
@@ -128,11 +142,6 @@ def combine_apps(
             return RedirectResponse(url=root_redirect, status_code=302)
 
         logger.info(f"Configured root redirect to {root_redirect}")
-
-    # Add health check endpoint
-    @main_app.get("/health")  # type: ignore[misc]
-    async def health_check() -> dict[str, str]:
-        return {"status": "healthy", "apps": str(list(apps.keys()))}
 
     return main_app
 

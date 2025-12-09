@@ -7,14 +7,15 @@ import pytest
 from fastapi.testclient import TestClient
 from traitlets import Unicode
 from unittest.mock import patch
+from anywidget import AnyWidget
 
-from numerous.apps.app_server import AnyWidget, create_app
+from numerous.apps import create_app
 from numerous.apps.communication import MultiProcessExecutionManager
 from numerous.apps.models import (
-    TraitValue, 
+    TraitValue,
     SetTraitValue,
     ActionRequestMessage,
-    ActionResponseMessage
+    ActionResponseMessage,
 )
 from numerous.apps.session_management import GlobalSessionManager, SessionId, SessionManager
 
@@ -137,20 +138,13 @@ def app_generator():
 
 @pytest.fixture
 def app(test_dirs):
-    from numerous.apps.app_server import templates  # Import templates object
-    import numerous.apps.server
-    import numerous.apps.app_server
-
-    # Add the test templates directory to Jinja2's search path
-    templates.env.loader.searchpath.append(str(test_dirs / "templates"))
-
     app = create_app(
         template="base.html.j2",
         dev=True,
         app_generator=app_generator,
         allow_threaded=True,
+        base_dir=test_dirs,
     )
-    
     return app
 
 
@@ -199,9 +193,15 @@ def test_template_with_unknown_variables(client, test_dirs):
         """
         )
 
-    app = create_app(template="bad.html.j2", dev=True, app_generator=app_generator)
+    app = create_app(
+        template="bad.html.j2",
+        dev=True,
+        app_generator=app_generator,
+        base_dir=test_dirs,
+    )
+    local_client = TestClient(app)
 
-    response = client.get("/")
+    response = local_client.get("/")
     assert response.status_code == 500
     assert "Template Error" in response.text
 
@@ -216,10 +216,18 @@ def test_missing_widget_warning(client, test_dirs, caplog):
         """
         )
 
+    app = create_app(
+        template="missing.html.j2",
+        dev=True,
+        app_generator=app_generator,
+        base_dir=test_dirs,
+    )
+    local_client = TestClient(app)
 
     with caplog.at_level(logging.WARNING):
-        response = client.get("/")
-        assert "widgets will not be displayed" in caplog.text
+        response = local_client.get("/")
+        assert response.status_code == 200
+        assert "missing placeholders" in caplog.text or "widgets will not be displayed" in caplog.text
 
 
 def test_websocket_error_in_dev_mode(client, test_dirs):

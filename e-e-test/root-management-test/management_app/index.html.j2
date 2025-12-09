@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
+    <title>Survey Management</title>
     <style>
         body {
             font-family: var(--numerous-font-sans, 'Inter', sans-serif);
@@ -37,7 +37,7 @@
             margin-bottom: 1rem;
         }
 
-        .card.admin {
+        .card.management {
             border-color: #ef4444;
         }
 
@@ -92,27 +92,21 @@
     <div class="container">
         <nav>
             <div>
-                <a href="/public">Public App</a>
-                <a href="/admin">Admin App</a>
-                <span class="badge">PROTECTED</span>
+                <a href="/">Survey App</a>
+                <a href="/management">Management <span class="badge">ADMIN</span></a>
             </div>
             <button class="logout-btn" onclick="logout()">Logout</button>
         </nav>
 
-        <h1>🔒 Admin Dashboard</h1>
+        <h1>🔒 Survey Management Dashboard</h1>
         <p class="subtitle">Database authentication required</p>
 
-        <div class="card admin">
-            <h2>Admin Counter</h2>
+        <div class="card management">
+            <h2>Response Statistics</h2>
             <div class="widget-row">
-                {{ admin_counter }}
-                {{ admin_btn }}
+                {{ total_responses }}
+                {{ refresh_btn }}
             </div>
-        </div>
-
-        <div class="card admin">
-            <h2>Secret Value</h2>
-            {{ secret_value }}
         </div>
     </div>
 

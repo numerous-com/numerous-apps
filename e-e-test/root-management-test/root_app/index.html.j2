@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Public App</title>
+    <title>Survey App</title>
     <style>
         body {
             font-family: var(--numerous-font-sans, 'Inter', sans-serif);
@@ -57,23 +57,32 @@
         nav a:hover {
             text-decoration: underline;
         }
+
+        .badge {
+            background: #ef4444;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <nav>
-            <a href="/public">Public App</a>
-            <a href="/admin">Admin App</a>
+            <a href="/">Survey App</a>
+            <a href="/management">Management <span class="badge">ADMIN</span></a>
         </nav>
 
-        <h1>🌐 Public App</h1>
+        <h1>📋 Public Survey</h1>
         <p class="subtitle">No authentication required</p>
 
         <div class="card">
-            <h2>Counter Demo</h2>
+            <h2>Survey Submissions</h2>
             <div class="widget-row">
-                {{ counter }}
-                {{ increment_btn }}
+                {{ survey_counter }}
+                {{ submit_btn }}
             </div>
         </div>
     </div>

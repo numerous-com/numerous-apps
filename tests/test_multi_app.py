@@ -119,29 +119,27 @@ class TestCombineApps:
 
 
 class TestCreateAppWithPathPrefix:
-    """Tests for create_app with path_prefix parameter."""
+    """Tests for create_app factory routing."""
 
-    @patch("numerous.apps.app_factory.create_numerous_app")
+    @patch("numerous.apps.create_numerous_app")
     def test_create_app_with_path_prefix_uses_factory(self, mock_factory):
-        """Test that path_prefix triggers factory pattern."""
+        """Factory should be invoked for any path_prefix (including root)."""
         mock_app = MagicMock(spec=NumerousApp)
         mock_factory.return_value = mock_app
 
-        # This should trigger the factory pattern
         result = create_app(
             template="test.html.j2",
             path_prefix="/myapp",
             app_generator=lambda: {},
         )
 
-        # Verify factory was called
         mock_factory.assert_called_once()
         call_kwargs = mock_factory.call_args[1]
         assert call_kwargs["path_prefix"] == "/myapp"
+        assert result is mock_app
 
-    def test_create_app_without_path_prefix_uses_singleton(self):
-        """Test that no path_prefix uses singleton pattern."""
-        # This should use the singleton
+    def test_create_app_returns_new_instance_each_time(self):
+        """Factory mode returns fresh instances (no singleton)."""
         app1 = create_app(
             template="test.html.j2",
             app_generator=lambda: {},
@@ -152,8 +150,7 @@ class TestCreateAppWithPathPrefix:
             app_generator=lambda: {},
         )
 
-        # Both should be the same singleton instance
-        assert app1 is app2
+        assert app1 is not app2
 
 
 class TestMultiAppRouting:
@@ -208,6 +205,162 @@ class TestMultiAppRouting:
 
         response2 = client.get("/second/data")
         assert response2.json() == {"app": "two"}
+
+    def test_root_mount_does_not_block_other_apps(self):
+        """Test that mounting an app at root doesn't block other mounted apps.
+        
+        This regression test ensures that when an app is mounted at "/" alongside
+        other apps at specific paths (e.g., "/management"), the specific paths
+        are still accessible. The fix is to mount more specific paths first.
+        """
+        root_app = NumerousApp()
+        management_app = NumerousApp()
+
+        @root_app.get("/")
+        async def root_index():
+            return {"app": "root"}
+
+        @management_app.get("/")
+        async def management_index():
+            return {"app": "management"}
+
+        # This order (root first) previously caused /management to return 404
+        main_app = combine_apps(
+            apps={
+                "": root_app,
+                "/management": management_app,
+            },
+        )
+
+        client = TestClient(main_app)
+
+        # Root app should be accessible
+        response_root = client.get("/")
+        assert response_root.status_code == 200
+        assert response_root.json() == {"app": "root"}
+
+        # Management app should also be accessible (this was the bug)
+        response_mgmt = client.get("/management/")
+        assert response_mgmt.status_code == 200
+        assert response_mgmt.json() == {"app": "management"}
+
+    def test_apps_mounted_by_path_specificity(self):
+        """Test that apps are mounted in order of path specificity (longest first)."""
+        app_root = NumerousApp()
+        app_api = NumerousApp()
+        app_api_v2 = NumerousApp()
+
+        @app_root.get("/test")
+        async def root_test():
+            return {"level": "root"}
+
+        @app_api.get("/test")
+        async def api_test():
+            return {"level": "api"}
+
+        @app_api_v2.get("/test")
+        async def api_v2_test():
+            return {"level": "api_v2"}
+
+        main_app = combine_apps(
+            apps={
+                "/": app_root,
+                "/api": app_api,
+                "/api/v2": app_api_v2,
+            },
+        )
+
+        client = TestClient(main_app)
+
+        # All paths should resolve to correct apps
+        assert client.get("/test").json() == {"level": "root"}
+        assert client.get("/api/test").json() == {"level": "api"}
+        assert client.get("/api/v2/test").json() == {"level": "api_v2"}
+
+
+class TestMultiAppAuthRedirects:
+    """Tests for authentication redirects in multi-app deployments."""
+
+    def test_auth_redirect_uses_correct_path_prefix(self):
+        """Test that auth middleware redirects to login with correct path prefix.
+        
+        When an app with auth is mounted at /management, unauthenticated requests
+        should redirect to /management/login, not /login.
+        """
+        from numerous.apps.auth.middleware import create_auth_middleware
+        
+        # Create a mock auth provider
+        class MockAuthProvider:
+            async def validate_access_token(self, token):
+                return None
+        
+        management_app = NumerousApp()
+        
+        @management_app.get("/")
+        async def management_index():
+            return {"app": "management"}
+        
+        # Add auth middleware with path prefix
+        middleware_class = create_auth_middleware(
+            auth_provider=MockAuthProvider(),
+            login_path="/management/login",  # This is what we're testing
+        )
+        management_app.add_middleware(middleware_class)
+        
+        # Add a login route for the redirect target
+        @management_app.get("/management/login")
+        async def login_page():
+            return {"page": "login"}
+        
+        main_app = combine_apps(
+            apps={"/management": management_app},
+        )
+        
+        client = TestClient(main_app, follow_redirects=False)
+        
+        # Accessing protected route without auth should redirect to /management/login
+        response = client.get("/management/")
+        assert response.status_code == 302
+        assert "/management/login" in response.headers["location"]
+
+    def test_prefixed_login_path_is_public(self):
+        """Test that the prefixed login path is accessible without causing redirect loop.
+        
+        This is a regression test for the bug where /management/login kept redirecting
+        to itself because it wasn't in the public routes list.
+        """
+        from numerous.apps.auth.middleware import create_auth_middleware
+        
+        # Create a mock auth provider
+        class MockAuthProvider:
+            async def validate_access_token(self, token):
+                return None
+        
+        management_app = NumerousApp()
+        
+        # Add a login page - route is /login internally, but /management/login externally
+        @management_app.get("/login")
+        async def login_page():
+            return {"page": "login"}
+        
+        # Add auth middleware with path prefix - login_path should be auto-added to public routes
+        # The middleware sees the full path (/management/login) so that's what we configure
+        middleware_class = create_auth_middleware(
+            auth_provider=MockAuthProvider(),
+            login_path="/management/login",
+        )
+        management_app.add_middleware(middleware_class)
+        
+        main_app = combine_apps(
+            apps={"/management": management_app},
+        )
+        
+        client = TestClient(main_app, follow_redirects=False)
+        
+        # Login page should be accessible (200), not redirect (302)
+        response = client.get("/management/login")
+        assert response.status_code == 200
+        assert response.json() == {"page": "login"}
 
 
 class TestBasePathInjection:

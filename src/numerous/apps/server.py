@@ -5,7 +5,6 @@ import logging
 import sys
 import time
 import traceback
-import uuid
 from collections.abc import Callable
 from importlib.machinery import ModuleSpec
 from pathlib import Path
@@ -23,7 +22,6 @@ from .execution import _execute
 from .models import (
     ErrorMessage,
 )
-from .session_management import GlobalSessionManager, SessionId, SessionManager
 
 
 class Jinja2Templates(Environment):  # type: ignore[misc]
@@ -46,53 +44,9 @@ class SessionData(TypedDict):
     config: dict[str, Any]
 
 
-global_session_manager = GlobalSessionManager()
-
-
-async def _get_session(
-    allow_threaded: bool,
-    session_id: str,
-    base_dir: str,
-    module_path: str,
-    template: str,
-    allow_create: bool = True,
-) -> SessionManager:
-    # Generate a session ID if one doesn't exist
-    if session_id in ["", "null", "undefined"] or (
-        not global_session_manager.has_session(SessionId(session_id))
-    ):
-        if not allow_create:
-            raise ValueError("Session ID not found.")
-        session_id = str(uuid.uuid4())
-
-        if allow_threaded:
-            execution_manager: (
-                ThreadedExecutionManager | MultiProcessExecutionManager
-            ) = ThreadedExecutionManager(
-                target=_app_process,  # type: ignore [arg-type]
-                session_id=session_id,
-            )
-        else:
-            execution_manager = MultiProcessExecutionManager(
-                target=_app_process,  # type: ignore [arg-type]
-                session_id=session_id,
-            )
-        execution_manager.start(str(base_dir), module_path, template)
-
-        # Create session in global manager and store in local sessions dict
-        session_manager = global_session_manager.create_session(
-            SessionId(session_id), execution_manager
-        )
-        sessions = global_session_manager._sessions  # noqa: SLF001
-        logger.info(
-            f"Creating new session {session_id}.\
-                Total sessions: \
-                    {len(sessions) + 1}"
-        )
-    else:
-        session_manager = global_session_manager.get_session(SessionId(session_id))
-
-    return session_manager
+# NOTE: The legacy global session manager and `_get_session` are intentionally
+# removed in favour of per-app session managers in `app_factory`.  The remaining
+# runtime pieces (_app_process, etc.) stay for reuse by the factory.
 
 
 def _get_template(template: str, templates: Jinja2Templates) -> str:
@@ -113,11 +67,12 @@ def _get_template(template: str, templates: Jinja2Templates) -> str:
         return template_name
 
 
-def _app_process(
+def _app_process(  # noqa: C901
     session_id: str,
     cwd: str,
     module_string: str,
     template: str,
+    app_id: str,
     communication_manager: CommunicationManager,
 ) -> None:
     """Run the app in a separate process."""
@@ -147,11 +102,37 @@ def _app_process(
         logger.debug("[Backend] Module loaded successfully")
 
         _app_widgets = {}
-        # Iterate over all attributes of the module
+        selected_app: NumerousApp | None = None
+        # Iterate over all attributes of the module and pick the matching app_id first
         for value in module.__dict__.values():
             if isinstance(value, NumerousApp):
-                _app_widgets = value.widgets
-                break
+                cfg = getattr(getattr(value, "state", None), "config", None)
+                if cfg is not None and getattr(cfg, "app_id", None) == app_id:
+                    selected_app = value
+                    break
+                if selected_app is None:
+                    # fallback to first if exact match not found
+                    selected_app = value
+
+        if selected_app is None:
+            msg = (
+                f"No NumerousApp instance found in module {module_string} "
+                f"for app_id={app_id}"
+            )
+            raise RuntimeError(msg)  # noqa: TRY301
+
+        logger.debug(
+            "Selected NumerousApp for app_id=%s (available: %s)",
+            app_id,
+            [
+                cfg.app_id
+                for v in module.__dict__.values()
+                if isinstance(v, NumerousApp)
+                if (cfg := getattr(getattr(v, "state", None), "config", None))
+            ],
+        )
+
+        _app_widgets = selected_app.widgets
 
         _check_app_widgets(_app_widgets)
         logger.debug(f"[Backend] Found {len(_app_widgets)} widgets")

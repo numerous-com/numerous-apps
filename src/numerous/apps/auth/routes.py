@@ -4,7 +4,16 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Cookie,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 from starlette.templating import Jinja2Templates
 
@@ -207,12 +216,15 @@ def create_login_page_route(
     async def login_page(
         request: Request,
         user: OptionalUser,
-        next_url: str | None = None,
+        next_url: str | None = Query(None, alias="next"),
     ) -> Response:
         """Render the login page."""
+        # Default redirect should be to base_path root, not global root
+        default_redirect = f"{base_path}/" if base_path else "/"
+
         # If already logged in, redirect to home or next URL
         if user:
-            return RedirectResponse(url=next_url or "/", status_code=302)
+            return RedirectResponse(url=next_url or default_redirect, status_code=302)
 
         template_name = login_template or "login.html.j2"
 
@@ -220,7 +232,7 @@ def create_login_page_route(
             template_name,
             {
                 "request": request,
-                "next": next_url or "/",
+                "next": next_url or default_redirect,
                 "title": "Login",
                 "base_path": base_path,
             },

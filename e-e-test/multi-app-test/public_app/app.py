@@ -1,6 +1,7 @@
 """Public app module - no authentication required."""
 
 from typing import Any
+from pathlib import Path
 
 import numerous.widgets as wi
 from numerous.apps import create_app
@@ -15,12 +16,9 @@ def run_app() -> dict[str, Any]:
 
     increment_btn = wi.Button(label="Increment", on_click=on_click)
 
-    message = wi.Text(default="Welcome to the public app!", label="Message:")
-
     return {
         "counter": counter,
         "increment_btn": increment_btn,
-        "message": message,
     }
 
 
@@ -30,6 +28,7 @@ app = create_app(
     dev=True,
     path_prefix="/public",
     app_generator=run_app,
+    base_dir=Path(__file__).parent,
 )
 
 if __name__ == "__main__":

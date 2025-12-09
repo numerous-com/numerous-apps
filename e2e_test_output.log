@@ -1,0 +1,32 @@
+INFO:Multi-App E2E Test Logger:Starting multi-app integration test
+INFO:Multi-App E2E Test Logger:Started multi-app server
+ERROR:Multi-App E2E Test Logger:INFO:numerous.apps.app_factory:Authentication enabled
+ERROR:Multi-App E2E Test Logger:INFO:numerous.apps.multi_app:Mounted app at /public
+ERROR:Multi-App E2E Test Logger:INFO:numerous.apps.multi_app:Mounted app at /admin
+ERROR:Multi-App E2E Test Logger:INFO:numerous.apps.multi_app:Configured root redirect to /public
+ERROR:Multi-App E2E Test Logger:INFO:     Started server process [15912]
+ERROR:Multi-App E2E Test Logger:INFO:     Waiting for application startup.
+ERROR:Multi-App E2E Test Logger:INFO:     Application startup complete.
+ERROR:Multi-App E2E Test Logger:INFO:     Uvicorn running on http://127.0.0.1:8770 (Press CTRL+C to quit)
+INFO:Multi-App E2E Test Logger:Waiting for multi-app server on 127.0.0.1:8770
+INFO:Multi-App E2E Test Logger:INFO:     127.0.0.1:53158 - "GET /health HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: GET http://127.0.0.1:8770/health "HTTP/1.1 200 OK"
+INFO:Multi-App E2E Test Logger:Multi-app server started on 127.0.0.1:8770
+INFO:Multi-App E2E Test Logger:INFO:     127.0.0.1:53159 - "GET /health HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: GET http://127.0.0.1:8770/health "HTTP/1.1 200 OK"
+INFO:Multi-App E2E Test Logger:\u2713 Health endpoint works
+INFO:Multi-App E2E Test Logger:INFO:     127.0.0.1:53159 - "GET / HTTP/1.1" 302 Found
+INFO:httpx:HTTP Request: GET http://127.0.0.1:8770/ "HTTP/1.1 302 Found"
+INFO:Multi-App E2E Test Logger:\u2713 Root redirects to /public
+INFO:Multi-App E2E Test Logger:INFO:     127.0.0.1:53159 - "GET /public/ HTTP/1.1" 500 Internal Server Error
+INFO:httpx:HTTP Request: GET http://127.0.0.1:8770/public/ "HTTP/1.1 500 Internal Server Error"
+INFO:Multi-App E2E Test Logger:Terminating multi-app server on 127.0.0.1:8770
+INFO:Multi-App E2E Test Logger:Multi-app server terminated
+ERROR:Multi-App E2E Test Logger:E2E test failed: 
+Traceback (most recent call last):
+  File "C:\code\numerous-apps\e-e-test\test_multi_app_e2e.py", line 601, in main
+    test_multi_app_integration()
+  File "C:\code\numerous-apps\e-e-test\test_multi_app_e2e.py", line 261, in test_multi_app_integration
+    assert response.status_code == 200
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

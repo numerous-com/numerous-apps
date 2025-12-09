@@ -36,6 +36,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         public_routes: Sequence[str] | None = None,
         protected_routes: Sequence[str] | None = None,
         login_path: str = "/login",
+        base_path: str = "",
     ) -> None:
         """
         Initialize the auth middleware.
@@ -46,27 +47,53 @@ class AuthMiddleware(BaseHTTPMiddleware):
             public_routes: Routes that don't require authentication
             protected_routes: Routes that require authentication
             login_path: Path to the login page
+            base_path: URL path prefix for multi-app deployments (e.g., "/management")
 
         """
         super().__init__(app)
         self.auth_provider = auth_provider
         self.login_path = login_path
+        self.base_path = base_path
 
-        # Default public routes (auth-related and static)
+        # Default auth-related routes that should be public
+        default_auth_routes = [
+            "/login",
+            "/api/auth/login",
+            "/api/auth/logout",
+            "/api/auth/refresh",
+            "/api/auth/check",
+        ]
+
+        # Default static routes that should be public
+        default_static_routes = [
+            "/numerous.js",
+            "/static",
+            "/numerous-static",
+            "/favicon.ico",
+        ]
+
+        # Build public routes set
         self.public_routes = set(public_routes or [])
-        self.public_routes.update(
-            {
-                "/login",
-                "/api/auth/login",
-                "/api/auth/logout",
-                "/api/auth/refresh",
-                "/api/auth/check",
-                "/numerous.js",
-                "/static",
-                "/numerous-static",
-                "/favicon.ico",
-            }
-        )
+
+        # Add default static routes with base_path prefix for multi-app deployments
+        for route in default_static_routes:
+            # Add unprefixed version
+            self.public_routes.add(route)
+            # Add prefixed version if base_path is set
+            if base_path:
+                self.public_routes.add(f"{base_path}{route}")
+
+        # Add auth routes with base_path prefix for multi-app deployments
+        for route in default_auth_routes:
+            # Add unprefixed version
+            self.public_routes.add(route)
+            # Add prefixed version if base_path is set
+            if base_path:
+                self.public_routes.add(f"{base_path}{route}")
+
+        # Always add the configured login_path to public routes
+        if login_path and login_path not in self.public_routes:
+            self.public_routes.add(login_path)
 
         # Protected routes (None means all non-public routes are protected)
         self.protected_routes = set(protected_routes) if protected_routes else None
@@ -195,6 +222,7 @@ def create_auth_middleware(
     public_routes: Sequence[str] | None = None,
     protected_routes: Sequence[str] | None = None,
     login_path: str = "/login",
+    base_path: str = "",
 ) -> type[AuthMiddleware]:
     """
     Factory function to create configured AuthMiddleware class.
@@ -207,6 +235,7 @@ def create_auth_middleware(
         public_routes: Routes that don't require auth
         protected_routes: Routes that require auth (None = all non-public)
         login_path: Path to login page
+        base_path: URL path prefix for multi-app deployments
 
     Returns:
         Configured AuthMiddleware class
@@ -221,6 +250,7 @@ def create_auth_middleware(
                 public_routes=public_routes,
                 protected_routes=protected_routes,
                 login_path=login_path,
+                base_path=base_path,
             )
 
     return ConfiguredAuthMiddleware

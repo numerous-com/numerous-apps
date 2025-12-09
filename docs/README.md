@@ -145,7 +145,7 @@ def run_app():
 
 ```python
 import numerous.widgets as wi
-
+<>
 ...
 
 counter = wi.Number(default=0, label="Counter:", fit_to_content=True)
@@ -302,6 +302,125 @@ numerous-bootstrap my_app --with-auth
 
 # Database-based authentication (SQLite, good for production)
 numerous-bootstrap my_app --with-db-auth
+```
+
+### Adding Authentication to an Existing App
+
+If you have an existing Numerous App without authentication and want to add it, follow these steps:
+
+**1. Original app without authentication:**
+
+```python
+from numerous.apps import create_app
+import numerous.widgets as wi
+
+def run_app():
+    counter = wi.Number(default=0, label="Counter:")
+    
+    def on_click(event):
+        counter.value += 1
+    
+    button = wi.Button(label="Click me", on_click=on_click)
+    return {"counter": counter, "button": button}
+
+app = create_app(
+    template="index.html.j2",
+    dev=True,
+    app_generator=run_app,
+)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+```
+
+**2. Add authentication by importing a provider and passing it to `create_app`:**
+
+```python
+from numerous.apps import create_app
+from numerous.apps.auth.providers.env_auth import EnvAuthProvider
+import numerous.widgets as wi
+
+def run_app():
+    counter = wi.Number(default=0, label="Counter:")
+    
+    def on_click(event):
+        counter.value += 1
+    
+    button = wi.Button(label="Click me", on_click=on_click)
+    return {"counter": counter, "button": button}
+
+# Create the authentication provider
+auth_provider = EnvAuthProvider()
+
+app = create_app(
+    template="index.html.j2",
+    dev=True,
+    app_generator=run_app,
+    auth_provider=auth_provider,  # Add this line
+)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+```
+
+**3. Configure users via environment variables:**
+
+```bash
+# Set the JWT secret (required for production)
+export NUMEROUS_JWT_SECRET="your-secure-secret-key"
+
+# Configure users
+export NUMEROUS_AUTH_USERS='[
+  {"username": "admin", "password": "admin123", "is_admin": true},
+  {"username": "user", "password": "userpass123", "roles": ["viewer"]}
+]'
+
+# Run your app
+python app.py
+```
+
+That's it! Your app now requires authentication. Users will be redirected to a login page when accessing protected routes.
+
+**Alternative: Use Database Authentication**
+
+For production apps or when you need user management features, use the database provider instead:
+
+```python
+from numerous.apps import create_app
+from numerous.apps.auth.providers.database_auth import DatabaseAuthProvider
+
+# Install dependencies first: pip install numerous-apps[auth-db]
+
+auth_provider = DatabaseAuthProvider(
+    database_url="sqlite+aiosqlite:///./app_auth.db",
+    jwt_secret="your-secure-secret-key",
+)
+
+app = create_app(
+    template="index.html.j2",
+    dev=True,
+    app_generator=run_app,
+    auth_provider=auth_provider,
+)
+```
+
+Then create users programmatically or via a management script:
+
+```python
+import asyncio
+from numerous.apps.auth.models import CreateUserRequest
+
+async def setup_users():
+    await auth_provider.create_user(CreateUserRequest(
+        username="admin",
+        password="securepassword123",
+        email="admin@example.com",
+        is_admin=True,
+    ))
+
+asyncio.run(setup_users())
 ```
 
 ### Authentication Providers

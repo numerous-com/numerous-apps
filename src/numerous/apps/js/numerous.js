@@ -12,6 +12,10 @@ let currentLogLevel = LOG_LEVELS.ERROR; // Default log level
 // This is set by the server when the app is mounted at a sub-path
 const BASE_PATH = window.NUMEROUS_BASE_PATH || "";
 
+// Session storage key scoped by base path to isolate sessions between apps
+// This prevents multi-app deployments from sharing session IDs
+const SESSION_STORAGE_KEY = `numerous_session${BASE_PATH || '_root'}`;
+
 // Set debug level based on URL parameters
 function initializeDebugging() {
     // Check for debug parameter in URL
@@ -373,7 +377,7 @@ async function fetchWidgetConfigs() {
     try {
         console.log("Fetching widget configs and states");
 
-        let sessionId = sessionStorage.getItem('session_id');
+        let sessionId = sessionStorage.getItem(SESSION_STORAGE_KEY);
         
         // Include auth headers if available
         const headers = {
@@ -394,7 +398,7 @@ async function fetchWidgetConfigs() {
         
         const data = await response.json();
 
-        sessionStorage.setItem('session_id', data.session_id);
+        sessionStorage.setItem(SESSION_STORAGE_KEY, data.session_id);
         sessionId = data.session_id;
 
         wsManager = new WebSocketManager(sessionId);

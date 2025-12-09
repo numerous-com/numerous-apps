@@ -9,9 +9,11 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from numerous.apps.app_server import _app, cleanup_session
+from types import SimpleNamespace
+
 from numerous.apps.communication import ExecutionManager, MultiProcessExecutionManager
 from numerous.apps.session_management import SessionId, SessionManager
+from numerous.apps.app_factory import SessionInfo, _cleanup_session
 
 # Mock execution manager for testing
 class MockExecutionManager(ExecutionManager):
@@ -37,23 +39,17 @@ class MockExecutionManager(ExecutionManager):
 @pytest_asyncio.fixture
 async def app_state():
     """Setup app state for testing."""
-    # Store original state
-    original_state = getattr(_app.state, "config", None)
-    
-    # Create test state
-    _app.state.config = MagicMock()
-    _app.state.config.sessions = {}
-    _app.state.config.allow_threaded = True
-    _app.state.config.base_dir = "/test/dir"
-    _app.state.config.module_path = "test_module.py"
-    _app.state.config.template = "test_template.html.j2"
-    _app.state.config.internal_templates = {}
-    
-    yield _app.state.config
-    
-    # Restore original state
-    if original_state:
-        _app.state.config = original_state
+    config = MagicMock()
+    config.sessions = {}
+    config.allow_threaded = True
+    config.base_dir = "/test/dir"
+    config.module_path = "test_module.py"
+    config.template = "test_template.html.j2"
+    config.internal_templates = {}
+
+    app = SimpleNamespace(state=SimpleNamespace(config=config))
+
+    yield app
 
 @pytest_asyncio.fixture
 async def test_session_manager():
@@ -69,9 +65,8 @@ async def test_session_manager():
 async def session_in_app_state(app_state, test_session_manager):
     """Create a session in the app state."""
     session_id = test_session_manager.session_id
-    from numerous.apps.app_server import SessionInfo
-    
-    app_state.sessions[session_id] = SessionInfo(
+
+    app_state.state.config.sessions[session_id] = SessionInfo(
         data=test_session_manager,
         last_active=time.time(),
     )
@@ -79,13 +74,13 @@ async def session_in_app_state(app_state, test_session_manager):
     yield session_id
     
     # Patching cleanup_session to avoid 'await' on MagicMock
-    if session_id in app_state.sessions:
+    if session_id in app_state.state.config.sessions:
         # Create a simplified cleanup that doesn't try to await the websockets
-        session_info = app_state.sessions[session_id]
+        session_info = app_state.state.config.sessions[session_id]
         # Clear connections to avoid await on MagicMock
         session_info.connections = {}
         # Now call the real cleanup
-        await cleanup_session(session_id)
+        await _cleanup_session(app_state, session_id)
 
 @pytest.mark.asyncio
 @pytest.mark.real_session_checks
@@ -177,11 +172,10 @@ async def test_execution_manager_is_connected():
 @pytest.mark.real_session_checks
 async def test_stale_session_detection(app_state, session_in_app_state):
     """Test detection of stale sessions directly through the is_active method."""
-    from numerous.apps.app_server import cleanup_session
     import logging
     
     session_id = session_in_app_state
-    session_data = app_state.sessions[session_id].data
+    session_data = app_state.state.config.sessions[session_id].data
     
     # Verify session is active initially
     assert session_data.is_active()
@@ -203,21 +197,17 @@ async def test_stale_session_detection(app_state, session_in_app_state):
     assert not session_data.is_active()
     
     # Set last activity time to be stale (more than 2 minutes ago)
-    app_state.sessions[session_id].last_active = time.time() - 180
+    app_state.state.config.sessions[session_id].last_active = time.time() - 180
     
     # Mock cleanup session to verify it's called
-    with patch('numerous.apps.app_server.cleanup_session', new_callable=AsyncMock) as mock_cleanup:
-        # Directly call cleanup with our inactive session
-        from numerous.apps.app_server import cleanup_expired_sessions
-        
+    with patch('numerous.apps.app_factory._cleanup_session', new_callable=AsyncMock) as mock_cleanup:
         # Call cleanup_session directly instead of trying to mock the whole endpoint
-        await cleanup_session(session_id)
+        await _cleanup_session(app_state, session_id)
         
         # Verify session was removed from app state
-        assert session_id not in app_state.sessions
+        assert session_id not in app_state.state.config.sessions
         
         # Since we directly called cleanup_session, we should check that resources were released
-        # by verifying that the session's stop method was called
         session_data._running = False
 
 # Add AsyncMock class to simplify testing async code
@@ -230,10 +220,10 @@ class AsyncMock(MagicMock):
 @pytest.mark.real_session_checks
 async def test_fetch_app_definition_with_retry(app_state, session_in_app_state):
     """Test that app definition fetching checks session validity."""
-    from numerous.apps.app_server import _fetch_app_definition_with_retry
+    from numerous.apps.app_factory import _fetch_app_definition_with_retry
     
     session_id = session_in_app_state
-    session = app_state.sessions[session_id].data
+    session = app_state.state.config.sessions[session_id].data
     
     # Test session is not active - this is the most important check for our fix
     with patch.object(session, 'is_active', return_value=False):
@@ -248,10 +238,8 @@ async def test_fetch_app_definition_with_retry(app_state, session_in_app_state):
 @pytest.mark.real_session_checks
 async def test_cleanup_session(app_state, session_in_app_state):
     """Test that session cleanup properly removes all resources."""
-    from numerous.apps.app_server import SessionInfo
-    
     session_id = session_in_app_state
-    session_info = app_state.sessions[session_id]
+    session_info = app_state.state.config.sessions[session_id]
     
     # Add mock connections to the session with AsyncMock for proper awaiting
     mock_websocket1 = MagicMock()
@@ -268,10 +256,10 @@ async def test_cleanup_session(app_state, session_in_app_state):
     # Use AsyncMock for session stop
     with patch.object(session_info.data, 'stop', new_callable=AsyncMock) as mock_stop:
         # Call cleanup
-        await cleanup_session(session_id)
+        await _cleanup_session(app_state, session_id)
         
         # Verify session was removed from state
-        assert session_id not in app_state.sessions
+        assert session_id not in app_state.state.config.sessions
         
         # Verify stop was called
         mock_stop.assert_called_once()
@@ -285,10 +273,8 @@ async def test_cleanup_session(app_state, session_in_app_state):
 @pytest.mark.real_session_checks
 async def test_page_reload_scenario(app_state, session_in_app_state):
     """Test key behaviors in a page reload scenario."""
-    from numerous.apps.app_server import cleanup_session
-    
     session_id = session_in_app_state
-    session_data = app_state.sessions[session_id].data
+    session_data = app_state.state.config.sessions[session_id].data
     
     # Test initial state
     assert session_data.is_active()
@@ -301,13 +287,13 @@ async def test_page_reload_scenario(app_state, session_in_app_state):
     session_data._running = False
     
     # Set last activity time to be stale (more than 2 minutes ago)
-    app_state.sessions[session_id].last_active = time.time() - 180  # 3 minutes ago
+    app_state.state.config.sessions[session_id].last_active = time.time() - 180  # 3 minutes ago
     
     # Verify session is now inactive
     assert not session_data.is_active()
     
     # Clean up the session
-    await cleanup_session(session_id)
+    await _cleanup_session(app_state, session_id)
     
     # Verify session was removed from state
-    assert session_id not in app_state.sessions 
+    assert session_id not in app_state.state.config.sessions

@@ -6,8 +6,9 @@ import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from traitlets import Unicode
+from anywidget import AnyWidget
 
-from numerous.apps.app_server import AnyWidget, create_app
+from numerous.apps import create_app
 from numerous.apps.auth.models import (
     User,
     AuthResult,
@@ -463,16 +464,7 @@ def module_env_auth_users():
 @pytest.fixture(scope="module")
 def auth_app(auth_test_dirs, module_env_auth_users):
     """Create an app with authentication enabled - module scoped to avoid middleware issues."""
-    from numerous.apps.app_server import templates, _app
     from numerous.apps.auth.providers.env_auth import EnvAuthProvider
-    import numerous.apps.app_server as app_server
-    
-    # Reset the app's middleware stack to allow adding middleware again
-    # This is a workaround for testing
-    _app.middleware_stack = None
-    
-    templates.env.loader.searchpath.append(str(auth_test_dirs / "templates"))
-
     auth_provider = EnvAuthProvider()
     app = create_app(
         template="base.html.j2",
@@ -480,10 +472,9 @@ def auth_app(auth_test_dirs, module_env_auth_users):
         app_generator=_app_generator_for_auth,
         auth_provider=auth_provider,
         public_routes=["/api/auth/login", "/api/auth/check", "/api/auth/logout", "/api/auth/refresh", "/login"],
+        base_dir=auth_test_dirs,
     )
     yield app
-    # Reset middleware for other tests
-    _app.middleware_stack = None
 
 
 @pytest.fixture

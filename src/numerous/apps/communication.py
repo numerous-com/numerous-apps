@@ -111,7 +111,7 @@ class MultiProcessExecutionManager(ExecutionManager):
 
     def __init__(
         self,
-        target: Callable[[str, str, str, str, CommunicationManager], None],
+        target: Callable[[str, str, str, str, str, CommunicationManager], None],
         session_id: str,
     ) -> None:
         """Initialize the MultiProcessExecutionManager."""
@@ -139,6 +139,7 @@ class MultiProcessExecutionManager(ExecutionManager):
         base_dir: str,
         module_path: str,
         template: str,
+        app_id: str,
     ) -> None:
         """Start the process."""
         if hasattr(self, "process") and self.process.is_alive():
@@ -150,6 +151,7 @@ class MultiProcessExecutionManager(ExecutionManager):
                 base_dir,
                 module_path,
                 template,
+                app_id,
                 self.communication_manager,
             ),
             daemon=True,
@@ -175,7 +177,7 @@ class ThreadedExecutionManager(ExecutionManager):
 
     def __init__(
         self,
-        target: Callable[[str, str, str, str, CommunicationManager], None],
+        target: Callable[[str, str, str, str, str, CommunicationManager], None],
         session_id: str,
     ) -> None:
         """Initialize the ThreadedExecutionManager."""
@@ -202,6 +204,7 @@ class ThreadedExecutionManager(ExecutionManager):
         base_dir: str,
         module_path: str,
         template: str,
+        app_id: str,
     ) -> None:
         """Start the thread."""
         if hasattr(self, "thread"):
@@ -216,6 +219,7 @@ class ThreadedExecutionManager(ExecutionManager):
                 base_dir,
                 module_path,
                 template,
+                app_id,
                 self.communication_manager,
             ),
             daemon=True,
