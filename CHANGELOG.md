@@ -2,6 +2,9 @@
 
 
 
+## v0.6.1 (2025-12-06)
+
+
 ## v0.6.0 (2025-12-04)
 
 ### Feature
@@ -30,6 +33,10 @@ Includes pytest tests and e2e tests for the new functionality. ([`7f01fce`](http
 - Update numerous.js to use dynamic base paths for API endpoints and WebSocket
 - Add numerous-base.css with CSS custom properties for consistent theming
 - Update pyproject.toml to include new CSS files in package data ([`99a7cea`](https://github.com/numerous-com/numerous-apps/commit/99a7ceaf65463af6acc963012068200b8ca6254f))
+
+### Fix
+
+* fix(docs): add documentation for multi-app support and template export features ([`9561744`](https://github.com/numerous-com/numerous-apps/commit/95617441a791623a40fe51b1b57fac7cfc8715e2))
 
 
 ## v0.5.0 (2025-12-03)
