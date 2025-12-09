@@ -2,6 +2,15 @@
 
 
 
+## v0.6.2 (2025-12-09)
+
+### Fix
+
+* fix: multi-app session defaults ([`962205c`](https://github.com/numerous-com/numerous-apps/commit/962205c4cfe1387e584630f86c4d7201286bd2b3))
+
+* fix: app factory multi-app isolation ([`ed6972b`](https://github.com/numerous-com/numerous-apps/commit/ed6972b6258d9dfb379a99ed3faa10b71f586056))
+
+
 ## v0.6.1 (2025-12-06)
 
 
