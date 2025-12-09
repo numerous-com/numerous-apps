@@ -67,15 +67,17 @@ def _get_template(template: str, templates: Jinja2Templates) -> str:
         return template_name
 
 
-def _app_process(  # noqa: C901
+def _app_process(  # noqa: C901,PLR0912,PLR0915
     session_id: str,
     cwd: str,
     module_string: str,
     template: str,
-    app_id: str,
-    communication_manager: CommunicationManager,
+    app_id: str | None = "",
+    communication_manager: CommunicationManager | None = None,
 ) -> None:
     """Run the app in a separate process."""
+    if communication_manager is None:
+        raise TypeError("communication_manager is required")
     if not isinstance(communication_manager, CommunicationManager):
         raise TypeError(
             "communication_manager must be an instance of CommunicationManager"
@@ -114,25 +116,55 @@ def _app_process(  # noqa: C901
                     # fallback to first if exact match not found
                     selected_app = value
 
-        if selected_app is None:
-            msg = (
-                f"No NumerousApp instance found in module {module_string} "
-                f"for app_id={app_id}"
+        if selected_app is not None:
+            logger.debug(
+                "Selected NumerousApp for app_id=%s (available: %s)",
+                app_id,
+                [
+                    cfg.app_id
+                    for v in module.__dict__.values()
+                    if isinstance(v, NumerousApp)
+                    if (cfg := getattr(getattr(v, "state", None), "config", None))
+                ],
             )
-            raise RuntimeError(msg)  # noqa: TRY301
+            _app_widgets = selected_app.widgets
+        else:
+            # Fallback: build widgets from module definitions/app_generator
+            logger.debug(
+                "No NumerousApp found in module %s for app_id=%s; "
+                "falling back to app_generator/AnyWidget discovery",
+                module_string,
+                app_id,
+            )
+            if hasattr(module, "app_generator") and callable(module.app_generator):
+                try:
+                    _app_widgets = module.app_generator()
+                except Exception:
+                    logger.exception("app_generator failed")
+                    _app_widgets = {}
+            if not _app_widgets:
+                _app_widgets = {
+                    k: v
+                    for k, v in module.__dict__.items()
+                    if isinstance(v, NumerousApp)
+                }
+            if not _app_widgets:
+                _app_widgets = {
+                    k: v for k, v in module.__dict__.items() if isinstance(v, AnyWidget)
+                }
+            if not _app_widgets:
+                msg = (
+                    f"No NumerousApp or widget definitions found in module "
+                    f"{module_string} for app_id={app_id}"
+                )
+                raise RuntimeError(msg)  # noqa: TRY301
 
-        logger.debug(
-            "Selected NumerousApp for app_id=%s (available: %s)",
-            app_id,
-            [
-                cfg.app_id
-                for v in module.__dict__.values()
-                if isinstance(v, NumerousApp)
-                if (cfg := getattr(getattr(v, "state", None), "config", None))
-            ],
-        )
-
-        _app_widgets = selected_app.widgets
+        # Ensure widgets have required attributes
+        for widget in _app_widgets.values():
+            if not hasattr(widget, "_css"):
+                widget.__dict__["_css"] = ""
+            if not hasattr(widget, "_esm"):
+                widget.__dict__["_esm"] = ""
 
         _check_app_widgets(_app_widgets)
         logger.debug(f"[Backend] Found {len(_app_widgets)} widgets")

@@ -139,7 +139,7 @@ class MultiProcessExecutionManager(ExecutionManager):
         base_dir: str,
         module_path: str,
         template: str,
-        app_id: str,
+        app_id: str = "",
     ) -> None:
         """Start the process."""
         if hasattr(self, "process") and self.process.is_alive():
@@ -204,7 +204,7 @@ class ThreadedExecutionManager(ExecutionManager):
         base_dir: str,
         module_path: str,
         template: str,
-        app_id: str,
+        app_id: str = "",
     ) -> None:
         """Start the thread."""
         if hasattr(self, "thread"):

@@ -114,7 +114,7 @@ async def _get_app_session(
     base_dir: str,
     module_path: str,
     template: str,
-    app_id: str,
+    app_id: str = "",
     allow_create: bool = True,
 ) -> SessionManager:
     """Get or create a session using the provided per-app session manager."""
